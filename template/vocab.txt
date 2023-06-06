@@ -1,0 +1,10 @@
+<pad>
+<sep>
+<unk>
+<cls>
+<mask>
+a
+t
+c
+g
+u

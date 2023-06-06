@@ -1,0 +1,5 @@
+{
+  "model_max_length": 1000000000000000019884624838656,
+  "special_tokens_map_file": "special_tokens_map.json",
+  "tokenizer_class": "UniRNATokenizer"
+}

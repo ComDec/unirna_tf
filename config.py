@@ -23,13 +23,15 @@ def build_config(path):
     hidden_size = int(hidden_size[1:])
     num_attention_heads = hidden_size // 64
     intermediate_size = hidden_size * 3
-
     config = UniRNAConfig(
         model_type=model_type,
         num_hidden_layers=num_hidden_layers,
         hidden_size=hidden_size,
         num_attention_heads=num_attention_heads,
         intermediate_size=intermediate_size,
+        pad_token_id=0,
+        sep_token_id=1,
+        mask_token_id=4,
     )
     config._name_or_path = name
     return config
