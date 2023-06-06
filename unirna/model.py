@@ -1,6 +1,6 @@
-from transformers import AutoModel, EsmModel, EsmForMaskedLM
+from transformers import EsmForMaskedLM, EsmModel
 
-from config import UniRNAConfig
+from .config import UniRNAConfig
 
 
 class AveragePooler:
@@ -15,6 +15,7 @@ class ClsPooler:
 
 class UniRNAModel(EsmModel):
     config_class = UniRNAConfig
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         del self.pooler
@@ -26,6 +27,3 @@ class UniRNAModel(EsmModel):
 
 class UniRNAForMaskedLM(EsmForMaskedLM):
     config_class = UniRNAConfig
-
-
-AutoModel.register(UniRNAConfig, UniRNAModel)

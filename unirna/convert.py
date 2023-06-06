@@ -7,10 +7,12 @@ import danling as dl
 import torch
 from chanfig import NestedDict
 
-from config import build_config
+from .config import build_config
 
 
 def convert_ckpt(ckpt):
+    if isinstance(ckpt, str):
+        ckpt = dl.load(ckpt)
     ckpt = NestedDict(ckpt)
     weights = OrderedDict()
     weights["embeddings.word_embeddings.weight"] = ckpt.pop("embed_tokens.weight")
@@ -29,7 +31,9 @@ def convert_ckpt(ckpt):
         weights[f"encoder.layer.{key}.attention.self.key.bias"] = kb
         weights[f"encoder.layer.{key}.attention.self.value.weight"] = vw
         weights[f"encoder.layer.{key}.attention.self.value.bias"] = vb
-        weights[f"encoder.layer.{key}.attention.self.rotary_embeddings.inv_freq"] = value.pop("self_attn.rot_emb.inv_freq")
+        weights[f"encoder.layer.{key}.attention.self.rotary_embeddings.inv_freq"] = value.pop(
+            "self_attn.rot_emb.inv_freq"
+        )
         weights[f"encoder.layer.{key}.attention.output.dense.weight"] = value.pop("self_attn.out_proj.weight")
         weights[f"encoder.layer.{key}.attention.output.dense.bias"] = value.pop("self_attn.out_proj.bias")
         weights[f"encoder.layer.{key}.attention.LayerNorm.weight"] = value.pop("self_attn_layer_norm.weight")
@@ -50,16 +54,18 @@ def convert_ckpt(ckpt):
     weights["lm_head.decoder.bias"] = ckpt.pop("lm_head.out_proj.bias")
     return weights
 
-def convert_unirna(path):
+
+def convert(path):
     ckpt = dl.load(path)
     config = build_config(path)
     if os.path.exists(config._name_or_path):
         shutil.rmtree(config._name_or_path)
-    shutil.copytree("template", config._name_or_path)
+    shutil.copytree(os.path.join(os.path.dirname(__file__), "template"), config._name_or_path)
     config.save_pretrained(config._name_or_path)
     ckpt = dl.load(path)
     weights = convert_ckpt(ckpt["model"])
     torch.save(weights, os.path.join(config._name_or_path, "pytorch_model.bin"))
 
+
 if __name__ == "__main__":
-    convert_unirna(sys.argv[1])
+    convert(sys.argv[1])

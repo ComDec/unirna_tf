@@ -1,6 +1,6 @@
 import os
 
-from transformers import AutoConfig, PretrainedConfig
+from transformers import PretrainedConfig
 
 
 class UniRNAConfig(PretrainedConfig):
@@ -10,9 +10,6 @@ class UniRNAConfig(PretrainedConfig):
         super().__init__(*args, **kwargs)
         self.architectures = ["UniRNAForMaskedLM"]
         self.position_embedding_type = "rotary"
-
-
-AutoConfig.register("unirna", UniRNAConfig)
 
 
 def build_config(path):
