@@ -20,6 +20,8 @@ class UniRNAModel(EsmModel):
         del self.pooler
         del self.contact_head
         self.pooler = ClsPooler()
+        if self.embeddings.position_embedding_type != "absolute":
+            del self.embeddings.position_embeddings
 
 
 class UniRNAForMaskedLM(EsmForMaskedLM):
