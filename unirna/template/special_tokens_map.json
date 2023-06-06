@@ -3,5 +3,6 @@
   "mask_token": "<mask>",
   "pad_token": "<pad>",
   "unk_token": "<unk>",
-  "sep_token": "<sep>"
+  "sep_token": "<sep>",
+  "eos_token": "<sep>"
 }
