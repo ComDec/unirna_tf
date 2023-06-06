@@ -18,8 +18,8 @@ def convert_ckpt(ckpt):
         weights["embeddings.position_ids"] = ckpt.pop("embeddings.position_ids")
     if "embeddings.position_embeddings.weight" in ckpt:
         weights["embeddings.position_embeddings.weight"] = ckpt.pop("embeddings.position_embeddings.weight")
-    weights["encoder.emb_layer_norm_before.weight"] = ckpt.pop("emb_layer_norm_before.weight")
-    weights["encoder.emb_layer_norm_before.bias"] = ckpt.pop("emb_layer_norm_before.bias")
+    weights["embeddings.layer_norm.weight"] = ckpt.pop("emb_layer_norm_before.weight")
+    weights["embeddings.layer_norm.bias"] = ckpt.pop("emb_layer_norm_before.bias")
     for key, value in ckpt.layers.items():
         qw, kw, vw = value.pop("self_attn.in_proj.weight").chunk(3, dim=0)
         qb, kb, vb = value.pop("self_attn.in_proj.bias").chunk(3, dim=0)
