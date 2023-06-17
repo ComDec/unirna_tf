@@ -3,8 +3,8 @@
 <unk>
 <cls>
 <mask>
-a
-t
-c
-g
-u
+A
+T
+C
+G
+U
