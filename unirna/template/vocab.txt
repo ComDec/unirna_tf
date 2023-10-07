@@ -1,6 +1,6 @@
 <pad>
-<sep>
-<unk>
+<eos>
+N
 <cls>
 <mask>
 A
