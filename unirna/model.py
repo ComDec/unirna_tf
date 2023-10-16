@@ -15,6 +15,7 @@ class ClsPooler:
 
 class UniRNAModel(EsmModel):
     config_class = UniRNAConfig
+    supports_gradient_checkpointing = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
