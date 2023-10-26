@@ -1,6 +1,6 @@
 {
   "pad_token": "<pad>",
-  "sep_token": "<eose>",
+  "sep_token": "<eos>",
   "eos_token": "<eos>",
   "unk_token": "N",
   "cls_token": "<cls>",

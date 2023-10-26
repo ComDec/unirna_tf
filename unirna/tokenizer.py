@@ -2,6 +2,12 @@ from transformers import EsmTokenizer
 
 
 class UniRNATokenizer(EsmTokenizer):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._id_to_token[self._token_to_id["U"]] = "T"
+        self._token_to_id["U"] = self._token_to_id["T"]
+
     def _convert_token_to_id(self, token: str) -> int:
         token = token.upper() if token not in self.all_special_tokens else token
         return self._token_to_id.get(token, self._token_to_id.get(self.unk_token))
