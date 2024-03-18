@@ -8,7 +8,7 @@ class UniRNAConfig(PretrainedConfig):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.architectures = ["UniRNAForMaskedLM"]
+        self.architectures = ["UniRNAModels"]
         self.position_embedding_type = "rotary"
 
 
@@ -34,7 +34,6 @@ def build_config(path):
         layer_norm_eps=1e-5,
         hidden_dropout_prob=0.0,
         attention_probs_dropout_prob=0.0,
-        max_position_embeddings=1026,
         token_dropout=True,
         initializer_range=0.02,
     )
