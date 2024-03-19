@@ -25,7 +25,7 @@ classifiers = [
 requires-python = ">=3"
 dynamic = ["version"]
 dependencies = [
-    "chanfig>0.0.55",
+    "transformers",
 ]
 
 [project.urls]
