@@ -1,7 +1,7 @@
 from transformers import AutoConfig, AutoModel, AutoTokenizer
 
 from .config import UniRNAConfig, build_config
-from .model import UniRNAForMaskedLM, UniRNAModels, UniRNAForSSPredict
+from .model import UniRNAForMaskedLM, UniRNAForSSPredict, UniRNAModels
 from .tokenizer import UniRNATokenizer
 
 __all__ = [

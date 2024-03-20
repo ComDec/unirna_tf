@@ -10,7 +10,6 @@ import torch
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import CrossEntropyLoss
-
 from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     BaseModelOutputWithPoolingAndCrossAttentions,
@@ -78,7 +77,7 @@ class RotaryEmbedding(torch.nn.Module):
 
 class UniRNAEmbedding(nn.Module):
     """
-    Same as BertEmbeddings with a tiny tweak for positional embeddings indexing.
+    Same as BertEmbeddings with a additional token_dropout.
     """
 
     def __init__(self, config):
@@ -144,7 +143,10 @@ class UniRNASelfAttention(nn.Module):
         self.is_decoder = config.is_decoder
 
     def transpose_for_scores(self, x: torch.Tensor) -> torch.Tensor:
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+        new_x_shape = x.size()[:-1] + (
+            self.num_attention_heads,
+            self.attention_head_size,
+        )
         x = x.view(new_x_shape)
         return x.permute(0, 2, 1, 3)
 
@@ -259,7 +261,10 @@ class UniRNA_Attention(nn.Module):
         if len(heads) == 0:
             return
         heads, index = find_pruneable_heads_and_indices(
-            heads, self.self.num_attention_heads, self.self.attention_head_size, self.pruned_heads
+            heads,
+            self.self.num_attention_heads,
+            self.self.attention_head_size,
+            self.pruned_heads,
         )
 
         # Prune linear layers
@@ -748,6 +753,10 @@ class UniRNAForMaskedLM(PreTrainedModel):
 
 
 class UniRNAForSSPredict(PreTrainedModel):
+    """
+    TODO: make it compatible with transformers, create new 'modeling_outputs' class for SS prediction
+    """
+
     def __init__(self, config):
         super().__init__(config)
 

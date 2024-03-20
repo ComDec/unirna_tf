@@ -1,9 +1,15 @@
+# Copyright Beijing DP Technology Co.,Ltd. All rights reserved.
+
+"""
+    The code is modified from the original ESM tokenizer provided by HuggingFace.
+    Sources: https://github.com/huggingface/transformers/blob/main/src/transformers/models/esm/tokenization_esm.py
+"""
+
 import os
 from typing import List, Optional, Union
 
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_utils_base import AddedToken
-
 
 VOCAB_FILES_NAMES = {"vocab_file": "vocab.txt"}
 
@@ -86,7 +92,10 @@ class UniRNATokenizer(PreTrainedTokenizer):
         return cls + token_ids_0 + sep + token_ids_1 + sep  # Multiple inputs always have an EOS token
 
     def get_special_tokens_mask(
-        self, token_ids_0: List, token_ids_1: Optional[List] = None, already_has_special_tokens: bool = False
+        self,
+        token_ids_0: List,
+        token_ids_1: Optional[List] = None,
+        already_has_special_tokens: bool = False,
     ) -> List[int]:
         """
         Retrieves sequence ids from a token list that has no special tokens added. This method is called when adding
@@ -117,7 +126,10 @@ class UniRNATokenizer(PreTrainedTokenizer):
         return mask
 
     def save_vocabulary(self, save_directory, filename_prefix):
-        vocab_file = os.path.join(save_directory, (filename_prefix + "-" if filename_prefix else "") + "vocab.txt")
+        vocab_file = os.path.join(
+            save_directory,
+            (filename_prefix + "-" if filename_prefix else "") + "vocab.txt",
+        )
         with open(vocab_file, "w") as f:
             f.write("\n".join(self.all_tokens))
         return (vocab_file,)
@@ -126,7 +138,11 @@ class UniRNATokenizer(PreTrainedTokenizer):
     def vocab_size(self) -> int:
         return self.get_vocab_size(with_added_tokens=False)
 
-    def _add_tokens(self, new_tokens: Union[List[str], List[AddedToken]], special_tokens: bool = False) -> int:
+    def _add_tokens(
+        self,
+        new_tokens: Union[List[str], List[AddedToken]],
+        special_tokens: bool = False,
+    ) -> int:
         return super()._add_tokens(new_tokens, special_tokens=True)
 
 
