@@ -144,24 +144,3 @@ class UniRNATokenizer(PreTrainedTokenizer):
         special_tokens: bool = False,
     ) -> int:
         return super()._add_tokens(new_tokens, special_tokens=True)
-
-
-# class UniRNATokenizer(EsmTokenizer):
-
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         self._id_to_token[self._token_to_id["U"]] = "T"
-#         self._token_to_id["U"] = self._token_to_id["T"]
-
-#     def _convert_token_to_id(self, token: str) -> int:
-#         token = token.upper() if token not in self.all_special_tokens else token
-#         return self._token_to_id.get(token, self._token_to_id.get(self.unk_token))
-
-#     def _convert_id_to_token(self, index: int) -> str:
-#         return self._id_to_token.get(index, self.unk_token)
-
-#     def token_to_id(self, token: str) -> int:
-#         return self._convert_token_to_id(token)
-
-#     def id_to_token(self, index: int) -> str:
-#         return self._convert_id_to_token(index)
