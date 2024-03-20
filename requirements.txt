@@ -1,1 +1,2 @@
-chanfig > 0.0.55
+torch>=2.0.0
+transformers

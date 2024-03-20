@@ -301,7 +301,7 @@ node_modules/
 *.dsw
 *.dsp
 
-# Visual Studio 6 technical files 
+# Visual Studio 6 technical files
 *.ncb
 *.aps
 
@@ -426,3 +426,6 @@ test/
 
 # version
 **/_version.py
+
+# model weight
+weights/unirna_L**

@@ -9,10 +9,10 @@ readme = "README.md"
 license = {file = "LICENSE"}
 keywords = ["Machine Learning", "Transformers", "UniRNA", "RNA"]
 maintainers = [
-    {name = "Zhiyuan Chen", email = "chenzhiyuan@dp.tech"},
+    {name = "Xi Wang", email = "wangx@dp.tech"},
 ]
 authors = [
-    {name = "Zhiyuan Chen", email = "chenzhiyuan@dp.tech"},
+    {name = "Xi Wang", email = "wangx@dp.tech"},
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -38,3 +38,10 @@ packages = ["unirna"]
 
 [tool.setuptools_scm]
 write_to = "unirna/_version.py"
+
+[tool.black]
+line-length = 120
+
+[tool.isort]
+line_length = 120
+profile = "black"

@@ -1,19 +1,77 @@
-Copyright (c) 2022 DP Technology
+Copyright (c) 2024 DP Technology
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Uni-RNA Code Usage License
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+These code usage license (hereinafter referred to as "these license") are intended to regulate the behavior and obligations of users during the use of Uni-RNA code (hereinafter referred to as "this code"). Before downloading, installing, using or accessing this code in any way, please read and understand the following terms and conditions carefully. If you do not agree with all or part of the content of these license, please stop using this code immediately. Once you start accessing, downloading, installing, and using this code, it means you have read, understood, and agreed to be bound by these license.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+1. Usage License
+
+1.1 The ownership and copyright of this code belong to Beijing DP Technology Co.,Ltd. (hereinafter referred to as "DP Technology"). Subject to compliance with these license, DP Technology hereby grants academic users (hereinafter referred to as "you") a worldwide, non-exclusive, royalty-free usage license for academic purposes only.
+
+1.2 The license granted under these license applies only to the object code version of this code. You have no rights to the source code of this code.
+
+2. Usage Restrictions
+
+2.1 These license only grant academic users the right to use this code for academic purposes. Any commercial organization, commercial institution or other non-academic users are not allowed to use this code. If this provision is violated, DP Technology reserves the right to pursue all legal liabilities.
+
+2.2 You may not use this code or any derivative works thereof for any commercial purpose, nor sell, rent, transfer, distribute or otherwise make it available to any third party. You must ensure that the use of this code is limited to your personal academic research and prohibit the use of this code for the benefit of any other entity (whether charged or not).
+
+2.3 You may not modify or create any derivative, compilation or collective works involving this code.
+
+2.4 You may not modify, crack, decompile, disassemble, reverse engineer, isolate, separate or otherwise extract the source code or attempt to discover the source code of this code from any program or documentation in any way. You may not remove, modify or obscure any copyright, trademark or other proprietary rights notices in this code. You may not use this code for any illegal activities, including but not limited to infringing on the intellectual property rights, privacy rights of others, etc.
+
+2.5 You agree to use this code only for lawful academic purposes, comply with the laws and regulations of your country or region, and assume all legal liabilities arising from violations of laws and regulations.
+
+3. Code Ownership
+
+This code is provided here for use under these license only, not for sale. The ownership and all other rights (including but not limited to intellectual property rights and trade secrets) of this code and all related documentation are and shall remain the exclusive property of DP Technology. You have no rights except for the limited usage license rights expressly granted under these license.
+
+4.Suggestions
+
+You may make suggestions regarding this code, provided that:
+
+(i) You represent and warrant that the suggestion does not infringe any third party's intellectual property rights;
+
+(ii) You acknowledge that DP Technology has the right to use the suggestion, but is not obligated to do so;
+
+(iii) You grant DP Technology a non-exclusive, irrevocable, sublicensable, royalty-free, worldwide license to reproduce, distribute, transmit, publicly display, publicly perform, modify, translate, create derivative works based on, produce, manufacture, market, sell, offer for sale, and/or otherwise use, in whole or in part, the suggestion and any derivative works thereof, including but not limited to incorporating the suggestion, in whole or in part, into DP Technology's code and/or other code, and in any medium now or hereafter known or developed, and to grant multiple sublicenses for engaging in the foregoing activities;
+
+(iv) You waive any rights or claims to the suggestion, and DP Technology has no obligation, royalty or restriction based on intellectual property or other aspects (such as attribution in using the suggestion).
+
+5. Citation Requirements
+
+If the results obtained using this code are published in a publication, you should acknowledge the use of Uni-Dock code in the results and indicate the name of the rights holder. When citing Uni-Dock, please use the following content:
+
+[Yu, Yuejiang, et al. "Uni-Dock: GPU-Accelerated Docking Enables Ultralarge Virtual Screening." Journal of Chemical Theory and Computation (2023). ]
+
+6. Reservation of Rights
+
+You acknowledge that all rights to this code not expressly granted to you, whether existing now or in the future, are reserved by DP Technology. Any unauthorized use of this code will be considered an infringement, and DP Technology has the right to pursue all legal liabilities of the infringer.
+
+7. Confidential Information
+
+You agree to treat the code and related documentation of this code as confidential information of DP Technology, and not to provide the relevant code to any third party, and to take a reasonably prudent attitude to prevent the leakage of the code and related documentation of this code.
+
+8. No Warranty
+
+This code is provided "as is" without any express or implied warranty, including but not limited to warranties of non-infringement of any code or specification, merchantability, fitness for a particular purpose, or non-infringement of third party rights. You agree to assume all risks associated with the use of this code or these license.
+
+9. Disclaimer
+
+To the maximum extent permitted by law, DP Technology shall not be liable for any damages related to this code or these license, including any direct, indirect, special, consequential or incidental damages, regardless of the legal theory on which the liability is based. This code may not be used unless the user accepts the restrictions of this disclaimer.
+
+10. In the event that you breach these license or fail to comply with any material term or condition of these license in any way, all rights granted to you will automatically terminate.
+
+11. Reporting
+
+If you believe that someone has violated these license, please report to DP Technology. DP Technology will strictly maintain the confidentiality of your identity. The reporting email address is [legal@dp.tech].
+
+12. Legal Jurisdiction
+
+Nothing in these license shall be construed as granting, by implication, estoppel or otherwise, any license or right other than those expressly granted under these license. If any provision of these license is deemed unenforceable, such provision shall be modified only to the extent necessary to make it enforceable. These license shall be governed by the laws of the People's Republic of China, without regard to its conflict of laws provisions and the United Nations Convention on Contracts for the International Sale of Goods. All disputes arising from these license shall be under the jurisdiction of the People's Court of Haidian District, Beijing.
+
+13. Future Versions
+
+DP Technology reserves the right to change or discontinue this code or these license at any time without prior notice.
+
+14. These license has both Chinese and English versions. In case of any conflict between the English and Chinese versions, the Chinese version shall prevail.
