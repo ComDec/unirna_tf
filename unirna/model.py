@@ -32,7 +32,7 @@ def apply_rotary_pos_emb(x, cos, sin):
     return (x * cos) + (rotate_half(x) * sin)
 
 
-class RotaryEmbedding(torch.nn.Module):
+class RotaryEmbedding(nn.Module):
     """
     Rotary position embeddings based on those in
     [RoFormer](https://huggingface.co/docs/transformers/model_doc/roformer). Query and keys are transformed by rotation
@@ -252,6 +252,8 @@ class UniRNASelfOutput(nn.Module):
 class UniRNA_Attention(nn.Module):
     def __init__(self, config):
         super().__init__()
+
+        # TODO: rename self.self to self.self_attention
         self.self = UniRNASelfAttention(config)
         self.output = UniRNASelfOutput(config)
         self.pruned_heads = set()
