@@ -404,7 +404,6 @@ FodyWeavers.xsd
 *.sln.iml
 
 # ipynb
-**.ipynb
 **/.ipynb_checkpoints/
 
 # temp files
