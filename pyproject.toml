@@ -3,8 +3,8 @@ requires = ["setuptools", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "unirna"
-description = "The Large-Scale Pre-Trained Model for RNA"
+name = "unirna_tf"
+description = "The Large-Scale Pre-Trained Model for RNA, a huggingface compatiable version"
 readme = "README.md"
 license = {file = "LICENSE"}
 keywords = ["Machine Learning", "Transformers", "UniRNA", "RNA"]
@@ -34,10 +34,10 @@ repository = "http://git.dp.tech/macromolecule/unirna_transformers"
 documentation = "http://git.dp.tech/macromolecule/unirna_transformers"
 
 [tool.setuptools]
-packages = ["unirna"]
+packages = ["unirna_tf"]
 
 [tool.setuptools_scm]
-write_to = "unirna/_version.py"
+write_to = "unirna_tf/_version.py"
 
 [tool.black]
 line-length = 120

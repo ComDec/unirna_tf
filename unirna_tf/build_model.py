@@ -7,7 +7,7 @@ import danling as dl
 import torch
 from chanfig import NestedDict
 
-from unirna.config import build_config
+from unirna_tf.config import build_config
 
 
 def convert_ckpt(ckpt):

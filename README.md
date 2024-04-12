@@ -21,7 +21,7 @@ We provide jupyter notebook to demonstrate how to use the pretrained model. You 
 ### Transformers
 
 ```python
-import unirna
+import unirna_tf
 from transformers import AutoTokenizer, AutoModel
 
 tokenizer = AutoTokenizer.from_pretrained("unirna_L16_E1024_DPRNA500M_STEP400K")
