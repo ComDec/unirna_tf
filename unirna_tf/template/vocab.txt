@@ -1,0 +1,10 @@
+<pad>
+<eos>
+N
+<cls>
+<mask>
+A
+T
+C
+G
+U

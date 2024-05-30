@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unirna_tf"
+description = "The Large-Scale Pre-Trained Model for RNA, a huggingface compatiable version"
+readme = "README.md"
+license = {file = "LICENSE"}
+keywords = ["Machine Learning", "Transformers", "UniRNA", "RNA"]
+maintainers = [
+    {name = "Xi Wang", email = "wangx@dp.tech"},
+]
+authors = [
+    {name = "Xi Wang", email = "wangx@dp.tech"},
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+requires-python = ">=3"
+dynamic = ["version"]
+dependencies = [
+    "transformers",
+]
+
+[project.urls]
+homepage = "http://git.dp.tech/macromolecule/unirna_transformers"
+repository = "http://git.dp.tech/macromolecule/unirna_transformers"
+documentation = "http://git.dp.tech/macromolecule/unirna_transformers"
+
+[tool.setuptools]
+packages = ["unirna_tf"]
+
+[tool.setuptools_scm]
+write_to = "unirna_tf/_version.py"
+
+[tool.black]
+line-length = 120
+
+[tool.isort]
+line_length = 120
+profile = "black"
