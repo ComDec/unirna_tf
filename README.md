@@ -34,4 +34,11 @@ outputs = model(**inputs)
 # if you want return attention weights
 outputs = model(**inputs, output_attentions=True)
 
+## if you just want to get the last hidden states, please use:
+with torch.no_grad():
+    outputs = model(**inputs, output_hidden_states=True)
+    last_hidden_states = outputs.last_hidden_state
+
+to make sure that the model is in evaluation mode without calculating gradients.
+
 ```
