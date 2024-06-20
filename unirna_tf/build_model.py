@@ -54,7 +54,7 @@ def convert_ckpt(ckpt):
     return weights
 
 
-def convert(path, version: int = 0, num_hidden_layers: int = 12, hidden_size: int = 768):
+def convert(path, version: int = 0, num_hidden_layers: int = 12, hidden_size: int = 768, vocab_size: int = 10):
     ckpt = torch.load(path)
     if version == 0:
         config = build_config(path)
@@ -70,10 +70,11 @@ def convert(path, version: int = 0, num_hidden_layers: int = 12, hidden_size: in
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
+    if len(sys.argv) < 3:
         convert(sys.argv[1])
     else:
         print("You choose GENE model. Please provide num_hidden_layers and hidden_size.")
         num_hidden_layers = int(input("num_hidden_layers: "))
         hidden_size = int(input("hidden_size: "))
-        convert(sys.argv[1], sys.argv[2], num_hidden_layers, hidden_size)
+        vocab_size = int(input("vocab_size: "))
+        convert(sys.argv[1], sys.argv[2], num_hidden_layers, hidden_size, vocab_size)
