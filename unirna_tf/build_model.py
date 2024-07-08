@@ -3,16 +3,15 @@ import shutil
 import sys
 from collections import OrderedDict
 
-import danling as dl
 import torch
 from chanfig import NestedDict
 
-from unirna_tf.config import build_config
+from unirna_tf.config import build_config, build_config_GENE
 
 
 def convert_ckpt(ckpt):
     if isinstance(ckpt, str):
-        ckpt = dl.load(ckpt)
+        ckpt = torch.load(ckpt)
     ckpt = NestedDict(ckpt)
     weights = OrderedDict()
     weights["embeddings.word_embeddings.weight"] = ckpt.pop("embed_tokens.weight")
@@ -55,17 +54,27 @@ def convert_ckpt(ckpt):
     return weights
 
 
-def convert(path):
-    ckpt = dl.load(path)
-    config = build_config(path)
+def convert(path, version: int = 0, num_hidden_layers: int = 12, hidden_size: int = 768, vocab_size: int = 10):
+    ckpt = torch.load(path)
+    if version == 0:
+        config = build_config(path)
+    else:
+        config = build_config_GENE(path, num_hidden_layers, hidden_size)
     if os.path.exists(config._name_or_path):
         shutil.rmtree(config._name_or_path)
     shutil.copytree(os.path.join(os.path.dirname(__file__), "template"), config._name_or_path)
     config.save_pretrained(config._name_or_path)
-    ckpt = dl.load(path)
+    ckpt = torch.load(path)
     weights = convert_ckpt(ckpt["model"])
     torch.save(weights, os.path.join(config._name_or_path, "pytorch_model.bin"))
 
 
 if __name__ == "__main__":
-    convert(sys.argv[1])
+    if len(sys.argv) < 3:
+        convert(sys.argv[1])
+    else:
+        print("You choose GENE model. Please provide num_hidden_layers and hidden_size.")
+        num_hidden_layers = int(input("num_hidden_layers: "))
+        hidden_size = int(input("hidden_size: "))
+        vocab_size = int(input("vocab_size: "))
+        convert(sys.argv[1], sys.argv[2], num_hidden_layers, hidden_size, vocab_size)
