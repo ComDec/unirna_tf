@@ -45,8 +45,8 @@ def build_config_GENE(path, num_hidden_layers: int, hidden_size: int, vocab_size
     path = os.path.splitext(path)[0]
     name = os.path.basename(path)
     # model_type, num_hidden_layers, hidden_size, _ = name.split("_")[:4]
-    num_hidden_layers = int(num_hidden_layers[1:])
-    hidden_size = int(hidden_size[1:])
+    num_hidden_layers = int(num_hidden_layers)
+    hidden_size = int(hidden_size)
     num_attention_heads = hidden_size // 64
     intermediate_size = hidden_size * 3
     config = UniRNAConfig(
