@@ -59,7 +59,7 @@ def convert(path, version: int = 0, num_hidden_layers: int = 12, hidden_size: in
     if version == 0:
         config = build_config(path)
     else:
-        config = build_config_GENE(path, num_hidden_layers, hidden_size)
+        config = build_config_GENE(path, num_hidden_layers, hidden_size, vocab_size)
     if os.path.exists(config._name_or_path):
         shutil.rmtree(config._name_or_path)
     shutil.copytree(os.path.join(os.path.dirname(__file__), "template"), config._name_or_path)
