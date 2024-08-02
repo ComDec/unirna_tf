@@ -58,11 +58,12 @@ def convert(path, version: int = 0, num_hidden_layers: int = 12, hidden_size: in
     ckpt = torch.load(path)
     if version == 0:
         config = build_config(path)
+        shutil.copytree(os.path.join(os.path.dirname(__file__), "tokenizer/single"), config._name_or_path)
     else:
         config = build_config_GENE(path, num_hidden_layers, hidden_size, vocab_size)
+        shutil.copytree(os.path.join(os.path.dirname(__file__), "tokenizer/single"), config._name_or_path)
     if os.path.exists(config._name_or_path):
         shutil.rmtree(config._name_or_path)
-    shutil.copytree(os.path.join(os.path.dirname(__file__), "template"), config._name_or_path)
     config.save_pretrained(config._name_or_path)
     ckpt = torch.load(path)
     weights = convert_ckpt(ckpt["model"])
