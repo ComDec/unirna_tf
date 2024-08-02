@@ -56,17 +56,26 @@ def convert_ckpt(ckpt):
 
 def convert(path, version: int = 0, num_hidden_layers: int = 12, hidden_size: int = 768, vocab_size: int = 10):
     ckpt = torch.load(path)
-    if version == 0:
+    if version == "single":
         config = build_config(path)
+        if os.path.exists(config._name_or_path):
+            shutil.rmtree(config._name_or_path)
         shutil.copytree(os.path.join(os.path.dirname(__file__), "tokenizer/single"), config._name_or_path)
-    else:
+    elif version == "bpe":
         config = build_config_GENE(path, num_hidden_layers, hidden_size, vocab_size)
-        shutil.copytree(os.path.join(os.path.dirname(__file__), "tokenizer/single"), config._name_or_path)
-    if os.path.exists(config._name_or_path):
-        shutil.rmtree(config._name_or_path)
+        if os.path.exists(config._name_or_path):
+            shutil.rmtree(config._name_or_path)
+        shutil.copytree(os.path.join(os.path.dirname(__file__), "tokenizer/bpe"), config._name_or_path)
+    else:
+        AssertionError("Invalid version for tokenizer")
     config.save_pretrained(config._name_or_path)
     ckpt = torch.load(path)
     weights = convert_ckpt(ckpt["model"])
+    if config.vocab_size != weights["embeddings.word_embeddings.weight"].shape[0]:
+        print(
+            f"Vocab size mismatch, loaded model weights have {weights['embeddings.word_embeddings.weight'].shape[0]} tokens, while config has {config.vocab_size} tokens. \nTruncating the weights."
+        )
+        weights["embeddings.word_embeddings.weight"] = weights["embeddings.word_embeddings.weight"][: config.vocab_size]
     torch.save(weights, os.path.join(config._name_or_path, "pytorch_model.bin"))
 
 
