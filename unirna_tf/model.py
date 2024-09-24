@@ -4,7 +4,7 @@
 """
 
 from functools import partial
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Sequence, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
@@ -763,7 +763,7 @@ class UniRNAForSSPredict(PreTrainedModel):
         super().__init__(config)
 
         self.UniRNA = UniRNAModel(config, add_pooling_layer=False)
-        self.ss_head = UniRNASSHead(config)
+        self.heads = UniRNASSHead(config)
 
         self.init_weights()
 
@@ -771,13 +771,8 @@ class UniRNAForSSPredict(PreTrainedModel):
         self,
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        head_mask: Optional[torch.Tensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
+        output_attentions: Optional[bool] = False,
+        output_hidden_states: Optional[bool] = True,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, MaskedLMOutput]:
         r"""
@@ -793,17 +788,12 @@ class UniRNAForSSPredict(PreTrainedModel):
         outputs = self.UniRNA(
             input_ids,
             attention_mask=attention_mask,
-            position_ids=position_ids,
-            head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
-            encoder_hidden_states=encoder_hidden_states,
-            encoder_attention_mask=encoder_attention_mask,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
         )
+
         sequence_output = outputs[0]
-        prediction_scores = self.ss_head(sequence_output)
+        prediction_scores = self.heads(sequence_output)
 
         return prediction_scores
 
@@ -859,28 +849,59 @@ class Dense(nn.Module):
         return out
 
 
+class MLP(nn.Module):
+    def __init__(
+        self,
+        *features: Sequence[int],
+        norm: str = "LayerNorm",
+        activation: str = "ReLU",
+        dropout: float = 0.1,
+        pool: str = "AdaptiveAvgPool1d",
+        bias: bool = True,
+        residual: bool = True,
+        linear_output: bool = True
+    ) -> None:
+        super().__init__()
+        if len(features) == 0 and isinstance(features, Sequence):
+            features = features[0]  # type: ignore[assignment]
+        if not len(features) > 1:
+            raise ValueError(f"`features` of MLP should have at least 2 elements, but got {len(features)}")
+        dense = partial(
+            Dense,
+            norm=norm,
+            activation=activation,
+            dropout=dropout,
+            pool=pool,
+            bias=bias,
+            residual=residual,
+        )
+        if linear_output:
+            layers = [dense(in_features, out_features) for in_features, out_features in zip(features, features[1:-1])]
+            layers.append(nn.Linear(features[-2], features[-1], bias=bias))
+        else:
+            layers = [dense(in_features, out_features) for in_features, out_features in zip(features, features[1:])]
+        self.layers = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.layers(x)
+
+
 class UniRNASSHead(nn.Module):
     """UniRNA head for Secondary Structure Prediction"""
 
     def __init__(self, config) -> None:
         super().__init__()
 
-        self.dense = partial(
-            Dense,
-            dropout=config.dense_dropout,
-            residual=False,
-        )
-
         self.qk_proj = nn.Linear(config.hidden_size, 2 * config.hidden_size)
-        self.ffn = self.dense(1, config.hidden_size)
+        self.ffn = MLP(1, config.hidden_size, residual=False)
         self.linear = nn.Linear(config.hidden_size, 1)
 
     def forward(self, features):
         x = features[:, 1:-1]  # remove CLS and EOS tokens
         q, k = self.qk_proj(x).chunk(2, dim=-1)
-        cmap = (q @ k.transpose(-1, -2)).unsqueeze(1 - 1)
-        cmap = cmap + self.ffn(cmap)
-        return self.linear(cmap)
+        contact_map = (q @ k.transpose(-2, -1)).unsqueeze(-1)
+        contact_map = contact_map + self.ffn(contact_map)
+        return self.linear(contact_map)
 
 
 class AveragePooler:
