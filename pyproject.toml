@@ -25,13 +25,16 @@ classifiers = [
 requires-python = ">=3"
 dynamic = ["version"]
 dependencies = [
-    "transformers",
+    "transformers"
 ]
 
 [project.urls]
 homepage = "http://git.dp.tech/macromolecule/unirna_transformers"
 repository = "http://git.dp.tech/macromolecule/unirna_transformers"
 documentation = "http://git.dp.tech/macromolecule/unirna_transformers"
+
+[project.scripts]
+unirna_infer = "unirna_tf.infer:cli_main"
 
 [tool.setuptools]
 packages = ["unirna_tf"]

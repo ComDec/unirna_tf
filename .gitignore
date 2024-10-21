@@ -419,6 +419,9 @@ fake_data
 experiments
 test_model_performance
 
+# temp dir for develop
+temp
+
 # pages
 public/
 test/

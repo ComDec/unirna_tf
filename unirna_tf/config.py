@@ -9,7 +9,6 @@ class UniRNAConfig(PretrainedConfig):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.architectures = ["UniRNAModels"]
-        self.position_embedding_type = "rotary"
 
 
 def build_config(path):
@@ -36,6 +35,7 @@ def build_config(path):
         attention_probs_dropout_prob=0.0,
         token_dropout=True,
         initializer_range=0.02,
+        use_flash_attention=True,
     )
     config._name_or_path = name
     return config

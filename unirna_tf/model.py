@@ -8,16 +8,29 @@ from typing import List, Optional, Sequence, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
+from packaging import version
 from torch import nn
 from torch.nn import CrossEntropyLoss
+from transformers.modeling_attn_mask_utils import (
+    _prepare_4d_attention_mask_for_sdpa,
+    _prepare_4d_causal_attention_mask_for_sdpa,
+)
 from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     BaseModelOutputWithPoolingAndCrossAttentions,
     MaskedLMOutput,
 )
 from transformers.modeling_utils import PreTrainedModel, find_pruneable_heads_and_indices, prune_linear_layer
+from transformers.utils import get_torch_version, logging
 
 from .config import UniRNAConfig
+
+try:
+    from .unirna_flash_attn import unirna_flash_attention
+except ImportError:
+    unirna_flash_attention = None
+
+logger = logging.get_logger(__name__)
 
 
 def rotate_half(x):
@@ -229,7 +242,85 @@ class UniRNASelfAttention(nn.Module):
 
         outputs = (context_layer, attention_probs) if output_attentions else (context_layer,)
 
-        # we just leave code here, nerver mind
+        return outputs
+
+
+class UniRNAFlashSelfAttention(UniRNASelfAttention):
+    def __init__(self, config):
+        super().__init__(config)
+        self.dropout_prob = config.attention_probs_dropout_prob
+        self.require_contiguous_qkv = version.parse(get_torch_version()) < version.parse("2.2.0")
+
+    # Adapted from BertSelfAttention
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        head_mask: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+        output_attentions: Optional[bool] = False,
+    ) -> Tuple[torch.Tensor]:
+
+        bsz, tgt_len, embed_dim = hidden_states.size()
+
+        query_layer = self.transpose_for_scores(self.query(hidden_states))
+
+        # If this is instantiated as a cross-attention module, the keys and values come from an encoder; the attention
+        # mask needs to be such that the encoder's padding tokens are not attended to.
+        is_cross_attention = encoder_hidden_states is not None
+
+        current_states = encoder_hidden_states if is_cross_attention else hidden_states
+        attention_mask = encoder_attention_mask if is_cross_attention else attention_mask
+
+        # Check `seq_length` of `past_key_value` == `len(current_states)` to support prefix tuning
+        if is_cross_attention and past_key_value and past_key_value[0].shape[2] == current_states.shape[1]:
+            key_layer, value_layer = past_key_value
+        else:
+            key_layer = self.transpose_for_scores(self.key(current_states))
+            value_layer = self.transpose_for_scores(self.value(current_states))
+            if past_key_value is not None and not is_cross_attention:
+                key_layer = torch.cat([past_key_value[0], key_layer], dim=2)
+                value_layer = torch.cat([past_key_value[1], value_layer], dim=2)
+
+        # Hardcoded from EsmModel provided by transformers
+        query_layer = query_layer * self.attention_head_size**-0.5
+
+        if self.is_decoder:
+            # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
+            # Further calls to cross_attention layer can then reuse all cross-attention
+            # key/value_states (first "if" case)
+            # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
+            # all previous decoder key/value_states. Further calls to uni-directional self-attention
+            # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
+            # if encoder bi-directional self-attention `past_key_value` is always `None`
+            past_key_value = (key_layer, value_layer)
+
+        # Apply rotary embeddings
+        query_layer, key_layer = self.rotary_embeddings(query_layer, key_layer)
+
+        if self.require_contiguous_qkv and query_layer.device.type == "cuda" and attention_mask is not None:
+            query_layer = query_layer.contiguous()
+            key_layer = key_layer.contiguous()
+            value_layer = value_layer.contiguous()
+
+        attn_output = unirna_flash_attention(
+            query_layer,
+            key_layer,
+            value_layer,
+            bsz,
+            self.num_attention_heads,
+            tgt_len,
+            self.attention_head_size,
+            self.dropout_prob,
+            key_padding_mask=(attention_mask if attention_mask is not None else None),
+        ).view(bsz, tgt_len, embed_dim)
+
+        # attn_output = attn_output.transpose(1, 2)
+        # attn_output = attn_output.reshape(bsz, tgt_len, self.all_head_size)
+
+        outputs = (attn_output,)
         if self.is_decoder:
             outputs = outputs + (past_key_value,)
 
@@ -254,7 +345,10 @@ class UniRNA_Attention(nn.Module):
         super().__init__()
 
         # TODO: rename self.self to self.self_attention
-        self.self = UniRNASelfAttention(config)
+        if unirna_flash_attention and config.use_flash_attention:
+            self.self = UniRNAFlashSelfAttention(config)
+        else:
+            self.self = UniRNASelfAttention(config)
         self.output = UniRNASelfOutput(config)
         self.pruned_heads = set()
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
@@ -537,11 +631,16 @@ class UniRNAModel(PreTrainedModel):
     def __init__(self, config, add_pooling_layer=True):
         super().__init__(config)
         self.config = config
-
         self.embeddings = UniRNAEmbedding(config)
         self.encoder = UniRNAEncoder(config)
-
         self.pooler = UniRNAPooler(config) if add_pooling_layer else None
+
+        if unirna_flash_attention and config.use_flash_attention:
+            self.apply_flash_attention = True
+            print("Using Uni-RNA FlashAttention")
+        else:
+            self.apply_flash_attention = False
+            print("Using Uni-RNA Attention")
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -624,9 +723,12 @@ class UniRNAModel(PreTrainedModel):
         if attention_mask is None:
             attention_mask = torch.ones(((batch_size, seq_length + past_key_values_length)), device=device)
 
-        # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
         # ourselves in which case we just need to make it broadcastable to all heads.
-        extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape)
+        if self.apply_flash_attention:
+            # using flash attention does not require the attention mask to be 4D
+            extended_attention_mask: torch.Tensor = attention_mask
+        else:
+            extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape)
 
         # If a 2D or 3D attention mask is provided for the cross-attention
         # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
@@ -651,6 +753,7 @@ class UniRNAModel(PreTrainedModel):
             attention_mask=attention_mask,
             inputs_embeds=inputs_embeds,
         )
+
         encoder_outputs = self.encoder(
             embedding_output,
             attention_mask=extended_attention_mask,
@@ -664,7 +767,12 @@ class UniRNAModel(PreTrainedModel):
             return_dict=return_dict,
         )
         sequence_output = encoder_outputs[0]
-        pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
+
+        # make it compatible with deepprotein which wraps the model with different pooler
+        try:
+            pooled_output = self.pooler(sequence_output, attention_mask) if self.pooler is not None else None
+        except TypeError:
+            pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
 
         if not return_dict:
             return (sequence_output, pooled_output) + encoder_outputs[1:]
@@ -904,9 +1012,30 @@ class UniRNASSHead(nn.Module):
         return self.linear(contact_map)
 
 
-class AveragePooler:
-    def __call__(self, hidden_states):
-        return hidden_states.mean(dim=1)
+class AvgPooler:
+    def __call__(self, hidden_states, attention_mask=None):
+        # bool_mask = attention_mask.bool()
+
+        # # Ensure we apply the mask and exclude the first and last tokens
+        # # Apply the mask and vectorize the operation
+
+        # # 1. Expand the attention mask to align with hidden_states dimensions
+        # mask_expanded = bool_mask.unsqueeze(-1).expand(hidden_states.size())
+
+        # # 2. Mask out the hidden states using the attention mask, excluding [CLS] and [SEP] tokens (1:-1)
+        # masked_hidden_states = hidden_states.masked_fill(~mask_expanded, 0)
+
+        # # 3. Exclude the first and last tokens (1:-1)
+        # trimmed_hidden_states = masked_hidden_states[:, 1:-1, :]
+
+        # # 4. Compute the sum and divide by the number of valid tokens
+        # pooled_result = trimmed_hidden_states.sum(dim=1) / (bool_mask[:, 1:-1].sum(dim=1, keepdim=True) + 1e-8)
+
+        # standard avg pooling
+        avg_poolers = []
+        for n in range(hidden_states.shape[0]):
+            avg_poolers.append(hidden_states[n, attention_mask[n].bool()][1:-1].mean(0))
+        return torch.stack(avg_poolers)
 
 
 class UniRNAModels(UniRNAModel):
@@ -916,6 +1045,6 @@ class UniRNAModels(UniRNAModel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # We didn't include weight for original pooler, so we replace it with a simple average pooler
+        # We didn't include weight for original pooler, so we replace it with a simple cls pooler
         del self.pooler
-        self.pooler = AveragePooler()
+        self.pooler = AvgPooler()

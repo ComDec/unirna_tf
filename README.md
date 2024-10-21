@@ -20,7 +20,7 @@ pip install .
 
 We provide jupyter notebook to demonstrate how to use the pretrained model. You can find the notebook in the `examples` directory. The model weights is stored in the `weights` directory.
 
-### Transformers
+### Quick Start
 
 ```python
 import unirna_tf
@@ -44,3 +44,14 @@ with torch.no_grad():
     last_hidden_states = outputs.last_hidden_state
 ```
 to make sure that the model is in evaluation mode without calculating gradients.
+
+### Ultra fast embedding inference
+#### Before use
+You must install flash-attn via: `pip install flash-attn`. Then, change the `"use_flash_attention": false` to `"use_flash_attention": true` in the `config.json` file. The flash-attn is a fast and efficient attention mechanism, which can speed up the embedding inference by 10x.
+#### Preare the data
+Prepare a fasta file, same format as the `data/example.fasta` file. The fasta file should contain the sequences you want to embed.
+### Run your inference
+```bash
+python infer.py --fasta_path data/example.fasta --output_dir data/example --batch_size 32 --concurrency 8 --pretrained_path weights/unirna_L16_E1024_DPRNA500M_STEP400K
+```
+The `--concurrency` is the number of threads you want to use. The `--batch_size` is the batch size for each thread, depending on the GPU RAM size of your machine. The `--pretrained_path` is the path to the pretrained model.
