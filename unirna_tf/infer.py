@@ -1,4 +1,5 @@
 import argparse
+import os
 from typing import Dict
 
 import numpy as np
@@ -70,10 +71,10 @@ def parser_args():
     )
 
     parser.add_argument(
-        "--save_intermediate",
-        "-si",
-        action="store_true",
-        help="Save intermediate results.",
+        "--nums_array",
+        "-na",
+        type=int,
+        help="Numbers of splits to divide the input fasta.",
     )
 
     return parser.parse_args()
@@ -101,24 +102,47 @@ class UniRNAPredictor:
         return batch
 
 
+def prepare_seq_partition(fasta_path, start, end):
+    with open(fasta_path, "r") as handle:
+        for i, record in enumerate(SeqIO.parse(handle, "fasta")):
+            if start <= i < end:
+                yield str(record.seq)
+
+
 def cli_main():
     import time
 
     start = time.time()
     args = parser_args()
-    infer_array = prepare_seq(args.fasta_path)
+
+    # region size calculation
+    total_records = sum(1 for _ in SeqIO.parse(args.fasta_path, "fasta"))
+    print(f"Total records: {total_records}")
+    records_per_partition = total_records // args.nums_array
+
+    # create output directorys
+    for i in range(args.nums_array):
+        os.makedirs(f"{args.output_dir}/part_{i}", exist_ok=True)
+
     ray.init(_temp_dir=args.temp_dir)
-    ds = ray.data.from_numpy(infer_array)
-    unirna_predictor = UniRNAPredictor(args.pretrained_path)
 
-    prediction = ds.map_batches(
-        unirna_predictor,
-        num_gpus=1,
-        batch_size=args.batch_size,
-        concurrency=args.concurrency,
-    )
+    for i in range(args.nums_array):
+        start = i * records_per_partition
+        end = start + records_per_partition if i < args.nums_array - 1 else total_records
+        print(f"Processing part {i}, start: {start}, end: {end}")
+        infer_array = list(prepare_seq_partition(args.fasta_path, start, end))
+        ds = ray.data.from_numpy(np.asarray(infer_array))
+        unirna_predictor = UniRNAPredictor(args.pretrained_path)
 
-    prediction.write_numpy(args.output_dir, column=["data", "output"])
+        prediction = ds.map_batches(
+            unirna_predictor,
+            num_gpus=1,
+            batch_size=args.batch_size,
+            concurrency=args.concurrency,
+        )
+
+        prediction.write_numpy(f"{args.output_dir}/part_{i}", column=["data", "output"])
+
     print("Time taken: ", time.time() - start)
 
 
