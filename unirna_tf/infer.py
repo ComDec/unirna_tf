@@ -1,11 +1,14 @@
 import argparse
 import os
+from functools import partial
 from typing import Dict
 
-import numpy as np
 import ray
 import torch
+import torch.utils
 from Bio import SeqIO
+from datasets import Dataset
+from ray.util.actor_pool import ActorPool
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
@@ -17,7 +20,14 @@ def prepare_seq(fasta_path):
     seq_list = []
     for record in tqdm(SeqIO.parse(fasta_path, "fasta"), desc="Prepare fasta file"):
         seq_list.append(str(record.seq))
-    return np.asarray(seq_list)
+    return seq_list
+
+
+def prepare_seq_dict(fasta_path):
+    seq_list = []
+    for record in tqdm(SeqIO.parse(fasta_path, "fasta"), desc="Prepare fasta file"):
+        seq_list.append({"seq": str(record.seq)})
+    return seq_list
 
 
 def parser_args():
@@ -28,6 +38,14 @@ def parser_args():
         type=int,
         required=True,
         help="Batch size.",
+    )
+
+    parser.add_argument(
+        "--max_seq_len",
+        "-msl",
+        type=int,
+        default=1024,
+        help="Maximum sequence length.",
     )
 
     parser.add_argument(
@@ -70,43 +88,50 @@ def parser_args():
         help="Temporary directory to store the Ray logs.",
     )
 
-    parser.add_argument(
-        "--nums_array",
-        "-na",
-        type=int,
-        help="Numbers of splits to divide the input fasta.",
-    )
-
     return parser.parse_args()
 
 
+@ray.remote(num_gpus=1, num_cpus=8)
 class UniRNAPredictor:
-    def __init__(self, pretrained_path: str):
+    def __init__(self, model, pretrained_path: str, batch_size: int = 128, max_seq_len: int = 1024):
         # Set "cuda:0" as the device so the Huggingface pipeline uses GPU.
+        self.batch_size = batch_size
+        self.max_seq_len = max_seq_len
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.tokenizer = AutoTokenizer.from_pretrained(pretrained_path)
-        self.model = UniRNAModels.from_pretrained(pretrained_path)
+        self.model = model
         self.model = self.model.to(self.device)
         self.model = self.model.eval()
         self.model = self.model.to(torch.bfloat16)
 
-    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, list]:
+    def encode(self, examples):
         tokens = self.tokenizer(
-            list(batch["data"]), padding=True, truncation=True, return_tensors="pt", max_length=4096
+            examples["seq"], padding=True, truncation=True, return_tensors="pt", max_length=self.max_seq_len
         )
-        with torch.inference_mode():
-            predictions = self.model(
-                tokens["input_ids"].to(self.device), tokens["attention_mask"].to(self.device), output_attentions=False
-            )
-        batch["output"] = predictions.pooler_output.float().cpu().numpy()
-        return batch
+        return tokens
 
+    def predict(self, fasta_path, output_dir) -> Dict[str, list]:
+        seq_list_dict = prepare_seq_dict(fasta_path)
+        dataset = Dataset.from_list(seq_list_dict)
+        dataset.set_transform(self.encode)
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, shuffle=False, num_workers=8)
+        results = []
+        print(f"Predicting {fasta_path}")
+        fasta_basename = os.path.basename(fasta_path)
+        fasta_name = fasta_basename.split(".")[0]
 
-def prepare_seq_partition(fasta_path, start, end):
-    with open(fasta_path, "r") as handle:
-        for i, record in enumerate(SeqIO.parse(handle, "fasta")):
-            if start <= i < end:
-                yield str(record.seq)
+        for tokens in tqdm(dataloader, desc=f"Predicting {fasta_name}"):
+            with torch.no_grad():
+                predictions = self.model(
+                    tokens["input_ids"].to(self.device),
+                    tokens["attention_mask"].to(self.device),
+                    output_attentions=False,
+                )
+            results.append(predictions.pooler_output.float().cpu())
+
+        torch.save(results, f"{output_dir}/{fasta_name}.pt")
+
+        return len(results)
 
 
 def cli_main():
@@ -114,34 +139,28 @@ def cli_main():
 
     start = time.time()
     args = parser_args()
+    file_paths = []
+    for file_name in os.listdir(args.fasta_path):
+        file_paths.append(os.path.join(args.fasta_path, file_name))
 
-    # region size calculation
-    total_records = sum(1 for _ in SeqIO.parse(args.fasta_path, "fasta"))
-    print(f"Total records: {total_records}")
-    records_per_partition = total_records // args.nums_array
+    num_actors = args.concurrency
 
-    # create output directorys
-    for i in range(args.nums_array):
-        os.makedirs(f"{args.output_dir}/part_{i}", exist_ok=True)
+    os.makedirs(args.output_dir, exist_ok=True)
 
     ray.init(_temp_dir=args.temp_dir)
+    model = UniRNAModels.from_pretrained(args.pretrained_path)
+    model_ref = ray.put(model)
+    actors = [
+        UniRNAPredictor.remote(model_ref, args.pretrained_path, args.batch_size, args.max_seq_len)
+        for _ in range(num_actors)
+    ]
+    pool = ActorPool(actors)
 
-    for i in range(args.nums_array):
-        start = i * records_per_partition
-        end = start + records_per_partition if i < args.nums_array - 1 else total_records
-        print(f"Processing part {i}, start: {start}, end: {end}")
-        infer_array = list(prepare_seq_partition(args.fasta_path, start, end))
-        ds = ray.data.from_numpy(np.asarray(infer_array))
-        unirna_predictor = UniRNAPredictor(args.pretrained_path)
+    for file in file_paths:
+        pool.submit(lambda a, f: a.predict.remote(f, args.output_dir), file)
 
-        prediction = ds.map_batches(
-            unirna_predictor,
-            num_gpus=1,
-            batch_size=args.batch_size,
-            concurrency=args.concurrency,
-        )
-
-        prediction.write_numpy(f"{args.output_dir}/part_{i}", column=["data", "output"])
+    while pool.has_next():
+        print(f"Finished prediction with {pool.get_next()} batches.")
 
     print("Time taken: ", time.time() - start)
 
