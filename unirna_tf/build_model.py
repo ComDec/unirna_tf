@@ -66,8 +66,14 @@ def convert(path, version: int = 0, num_hidden_layers: int = 12, hidden_size: in
         if os.path.exists(config._name_or_path):
             shutil.rmtree(config._name_or_path)
         shutil.copytree(os.path.join(os.path.dirname(__file__), "tokenizer/bpe"), config._name_or_path)
+    elif version == "plant_bpe":
+        config = build_config_GENE(path, num_hidden_layers, hidden_size, vocab_size)
+        if os.path.exists(config._name_or_path):
+            shutil.rmtree(config._name_or_path)
+        shutil.copytree(os.path.join(os.path.dirname(__file__), "tokenizer/plant_bpe"), config._name_or_path)
     else:
         AssertionError("Invalid version for tokenizer")
+
     config.save_pretrained(config._name_or_path)
     ckpt = torch.load(path)
     weights = convert_ckpt(ckpt["model"])
@@ -84,7 +90,7 @@ if __name__ == "__main__":
         convert(sys.argv[1])
     else:
         print("You choose GENE model. Please provide num_hidden_layers and hidden_size.")
-        num_hidden_layers = int(input("num_hidden_layers: "))
+        num_hidden_layers = int(input("nums_layers: "))
         hidden_size = int(input("hidden_size: "))
         vocab_size = int(input("vocab_size: "))
         convert(sys.argv[1], sys.argv[2], num_hidden_layers, hidden_size, vocab_size)

@@ -430,4 +430,4 @@ test/
 **/_version.py
 
 # model weight
-weights/unirna_L**
+weights
