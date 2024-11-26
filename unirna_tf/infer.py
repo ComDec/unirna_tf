@@ -88,15 +88,26 @@ def parser_args():
         help="Temporary directory to store the Ray logs.",
     )
 
+    parser.add_argument(
+        "--whole_seq",
+        "-ws",
+        type=bool,
+        default=False,
+        help="Whether to save the whole sequence embedding or not.",
+    )
+
     return parser.parse_args()
 
 
 @ray.remote(num_gpus=1, num_cpus=8)
 class UniRNAPredictor:
-    def __init__(self, model, pretrained_path: str, batch_size: int = 128, max_seq_len: int = 1024):
+    def __init__(
+        self, model, pretrained_path: str, batch_size: int = 128, max_seq_len: int = 1024, save_whole_seq: bool = False
+    ):
         # Set "cuda:0" as the device so the Huggingface pipeline uses GPU.
         self.batch_size = batch_size
         self.max_seq_len = max_seq_len
+        self.save_whole_seq = save_whole_seq
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.tokenizer = AutoTokenizer.from_pretrained(pretrained_path)
         self.model = model
@@ -127,7 +138,10 @@ class UniRNAPredictor:
                     tokens["attention_mask"].to(self.device),
                     output_attentions=False,
                 )
-            results.append(predictions.pooler_output.float().cpu())
+            if self.save_whole_seq:
+                results.append((predictions.pooler_output.float().cpu(), predictions.last_hidden_state.float().cpu()))
+            else:
+                results.append(predictions.pooler_output.float().cpu())
 
         torch.save(results, f"{output_dir}/{fasta_name}.pt")
 
@@ -151,7 +165,7 @@ def cli_main():
     model = UniRNAModels.from_pretrained(args.pretrained_path)
     model_ref = ray.put(model)
     actors = [
-        UniRNAPredictor.remote(model_ref, args.pretrained_path, args.batch_size, args.max_seq_len)
+        UniRNAPredictor.remote(model_ref, args.pretrained_path, args.batch_size, args.max_seq_len, args.whole_seq)
         for _ in range(num_actors)
     ]
     pool = ActorPool(actors)

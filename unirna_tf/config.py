@@ -8,7 +8,7 @@ class UniRNAConfig(PretrainedConfig):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.architectures = ["UniRNAModels"]
+        self.architectures = ["UniRNAForMLM"]
 
 
 def build_config(path):

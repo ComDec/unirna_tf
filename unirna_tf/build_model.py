@@ -45,12 +45,12 @@ def convert_ckpt(ckpt):
         weights[f"encoder.layer.{key}.LayerNorm.bias"] = value.pop("final_layer_norm.bias")
     weights["encoder.emb_layer_norm_after.weight"] = ckpt.pop("emb_layer_norm_after.weight")
     weights["encoder.emb_layer_norm_after.bias"] = ckpt.pop("emb_layer_norm_after.bias")
-    # weights["lm_head.dense.weight"] = ckpt.pop("lm_head.dense.weight")
-    # weights["lm_head.dense.bias"] = ckpt.pop("lm_head.dense.bias")
-    # weights["lm_head.layer_norm.weight"] = ckpt.pop("lm_head.layer_norm.weight")
-    # weights["lm_head.layer_norm.bias"] = ckpt.pop("lm_head.layer_norm.bias")
-    # weights["lm_head.decoder.weight"] = ckpt.pop("lm_head.out_proj.weight")
-    # weights["lm_head.decoder.bias"] = ckpt.pop("lm_head.out_proj.bias")
+    weights["lm_head.dense.weight"] = ckpt.pop("lm_head.dense.weight")
+    weights["lm_head.dense.bias"] = ckpt.pop("lm_head.dense.bias")
+    weights["lm_head.layer_norm.weight"] = ckpt.pop("lm_head.layer_norm.weight")
+    weights["lm_head.layer_norm.bias"] = ckpt.pop("lm_head.layer_norm.bias")
+    weights["lm_head.decoder.weight"] = ckpt.pop("lm_head.out_proj.weight")
+    weights["lm_head.decoder.bias"] = ckpt.pop("lm_head.out_proj.bias")
     return weights
 
 
