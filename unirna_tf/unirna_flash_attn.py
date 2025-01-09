@@ -25,9 +25,9 @@ def unirna_flash_attention(
     max_seqlen_q = seqlen
 
     if key_padding_mask is not None:
-        k_unpad, indices_k, cu_seqlens_k, max_seqlen_k = unpad_input(k, key_padding_mask)
+        k_unpad, indices_k, cu_seqlens_k, max_seqlen_k, seq_used = unpad_input(k, key_padding_mask)
         k_unpad = rearrange(k_unpad, "nnz (h d) -> nnz h d", h=num_heads)
-        v_unpad, _, _, _ = unpad_input(v, key_padding_mask)
+        v_unpad, _, _, _, seq_used = unpad_input(v, key_padding_mask)
         v_unpad = rearrange(v_unpad, "nnz (h d) -> nnz h d", h=num_heads)
 
         # there is no need to conduct unpad_input for q
