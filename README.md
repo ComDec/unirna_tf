@@ -12,6 +12,12 @@ The light version of Uni-RNA, which is designed to be more efficient and easier 
 
 If you unzip the code from compressed file, please run `git init` to initialize the git repository. We need git info. to track the version of the code.
 
+Before install the package, please install the `flash-attn` package first. Please refer to the [flash-attn](https://github.com/HazyResearch/flash-attention) repository for more details.
+
+```bash
+pip install flash-attn, ray
+```
+
 ```bash
 pip install .
 ```
