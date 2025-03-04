@@ -28,6 +28,10 @@ We provide jupyter notebook to demonstrate how to use the pretrained model. You 
 
 ### Quick Start
 
+**!!! You must convert string to uppercase before inputting the sequence to the model !!!**
+
+Sequence "ATcg" is different from "ATCG", all the lowercase letters will be merged and converted to `unk_token` in the tokenizer.
+
 ```python
 import unirna_tf
 from transformers import AutoTokenizer, AutoModel
