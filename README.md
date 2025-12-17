@@ -8,6 +8,7 @@ If you unzip the code from compressed file, please run `git init` to initialize 
 
 ```bash
 conda create -n unirna python=3.10
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
 pip install -r requirements.txt
 pip install -e .
 ```
