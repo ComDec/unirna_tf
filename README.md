@@ -15,7 +15,10 @@ pip install -e .
 
 ## How to use
 
-We provide jupyter notebook to demonstrate how to use the pretrained model. You can find the notebook in the `examples` directory. The model weights is stored in the `weights` directory.
+We provide jupyter notebook to demonstrate how to use the pretrained model. You can find the notebook in the `examples` directory. 
+
+For model weights, please download from [Google Drive](https://drive.google.com/file/d/1zzxQa4LHCOHR9GS4MQJ4uFNtMgJsPbuv/view?usp=drive_link) and copy to the root directory of the project, then run:
+`tar -zxvf weights.tar.gz`. You will find the model weights is stored in the `weights` directory.
 
 ### Quick Start
 
@@ -28,7 +31,7 @@ import unirna_tf
 from transformers import AutoTokenizer, AutoModel
 
 tokenizer = AutoTokenizer.from_pretrained("./weights/unirna_L16")
-model = AutoModel.from_pretrained("./weights/unirna_L16)
+model = AutoModel.from_pretrained("./weights/unirna_L16")
 
 seq = "AUCGGUGACA"
 inputs = tokenizer(seq, return_tensors="pt")
@@ -53,7 +56,7 @@ Prepare a fasta file, same format as the `example/fasta/example_0.fasta` file. T
 
 ### Run your inference
 ```bash
-python unirna_tf/infer.py --fasta_path example/fasta --output_dir example/output --batch_size 32 --concurrency 1 --pretrained_path weights/unirna_L16
+python unirna_tf/infer.py --fasta_path example/fasta --output_dir example/output --batch_size 1 --concurrency 1 --pretrained_path weights/unirna_L16
 ```
 The `--concurrency` is the number of threads you want to use, corresponds to the number of GPUs you want to use. The `--batch_size` is the batch size for each thread, depending on the GPU RAM size of your machine. The `--pretrained_path` is the path to the pretrained model.
 
