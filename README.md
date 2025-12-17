@@ -1,6 +1,6 @@
 # README
 
-The light version of Uni-RNA, which is designed to be more efficient and easier to use. The light version is trained with few codes, and is suitable for small-scale applications and experiments.
+The light version of Uni-RNA, which is designed to be more efficient and easier to use.
 
 ## Installation
 
@@ -21,7 +21,7 @@ We provide jupyter notebook to demonstrate how to use the pretrained model. You 
 
 **!!! You must convert string to uppercase before inputting the sequence to the model !!!**
 
-Sequence "ATcg" is different from "ATCG", all the lowercase letters will be merged and converted to `unk_token` in the tokenizer.
+Sequence "AUcg" is different from "AUCG", all the lowercase letters will be merged and converted to `unk_token` in the tokenizer.
 
 ```python
 import unirna_tf
@@ -49,10 +49,13 @@ to make sure that the model is in evaluation mode without calculating gradients.
 ### Ultra fast embedding inference
 
 #### Preare the data
-Prepare a fasta file, same format as the `data/fasta/example.fasta` file. The fasta file should contain the sequences you want to embed. By running the following command, we will automatically collect all fasta files in the `data/fasta` directory and extract the embedding for each sequence.
+Prepare a fasta file, same format as the `example/fasta/example_0.fasta` file. The fasta file should contain the sequences you want to embed. By running the following command, we will automatically collect all fasta files in the `example/fasta` directory and extract the embedding for each sequence.
 
 ### Run your inference
 ```bash
-python infer.py --fasta_path data/fasta --output_dir data/example --batch_size 32 --concurrency 8 --pretrained_path weights/unirna_L16
+python unirna_tf/infer.py --fasta_path example/fasta --output_dir example/output --batch_size 32 --concurrency 1 --pretrained_path weights/unirna_L16
 ```
 The `--concurrency` is the number of threads you want to use, corresponds to the number of GPUs you want to use. The `--batch_size` is the batch size for each thread, depending on the GPU RAM size of your machine. The `--pretrained_path` is the path to the pretrained model.
+
+## Acknowledgments
+"Commercial inquiries, please contact wenh@aisi.ac.cn"
