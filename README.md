@@ -58,4 +58,4 @@ python unirna_tf/infer.py --fasta_path example/fasta --output_dir example/output
 The `--concurrency` is the number of threads you want to use, corresponds to the number of GPUs you want to use. The `--batch_size` is the batch size for each thread, depending on the GPU RAM size of your machine. The `--pretrained_path` is the path to the pretrained model.
 
 ## Acknowledgments
-"Commercial inquiries, please contact wenh@aisi.ac.cn"
+Commercial inquiries, please contact [wenh@aisi.ac.cn](mailto:wenh@aisi.ac.cn)
