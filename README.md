@@ -1,5 +1,7 @@
 # README
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/4d0dbe2d525a4d9e9009fa2e0d8db738)](https://app.codacy.com/gh/ComDec/unirna_tf?utm_source=github.com&utm_medium=referral&utm_content=ComDec/unirna_tf&utm_campaign=Badge_Grade)
+
 The light version of Uni-RNA, which is designed to be more efficient and easier to use.
 
 ## Installation
