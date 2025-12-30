@@ -29,6 +29,8 @@ class UniRNAConfig(PretrainedConfig):
         is_decoder: bool = False,
         **kwargs,
     ):
+        # Ensure attribute exists before any access.
+        self.architectures = kwargs.get("architectures", None)
         super().__init__(
             pad_token_id=pad_token_id,
             sep_token_id=sep_token_id,

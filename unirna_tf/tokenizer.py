@@ -17,7 +17,7 @@ VOCAB_FILES_NAMES = {"vocab_file": "vocab.txt"}
 def load_vocab_file(vocab_file):
     with open(vocab_file, "r") as f:
         lines = f.read().splitlines()
-        return [l.strip() for l in lines]
+        return [line.strip() for line in lines]
 
 
 class UniRNATokenizer(PreTrainedTokenizer):

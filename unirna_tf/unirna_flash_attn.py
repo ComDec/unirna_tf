@@ -29,7 +29,7 @@ def unirna_flash_attention(
     if key_padding_mask is not None:
         if key_padding_mask.dtype is not torch.bool:
             key_padding_mask = key_padding_mask.bool()
-        k_unpad, indices_k, cu_seqlens_k, max_seqlen_k, seq_used = unpad_input(k, key_padding_mask)
+        k_unpad, _, cu_seqlens_k, max_seqlen_k, seq_used = unpad_input(k, key_padding_mask)
         k_unpad = rearrange(k_unpad, "nnz (h d) -> nnz h d", h=num_heads)
         v_unpad, _, _, _, seq_used = unpad_input(v, key_padding_mask)
         v_unpad = rearrange(v_unpad, "nnz (h d) -> nnz h d", h=num_heads)

@@ -5,6 +5,8 @@ from transformers import AutoTokenizer
 
 from unirna_tf.tokenizer import UniRNATokenizer
 
+UNK_TOKEN = "N"  # nosec: not a password, placeholder token for unknown
+
 
 def _vocab_path():
     return Path(__file__).resolve().parents[1] / "weights" / "unirna_L16" / "vocab.txt"
@@ -54,4 +56,4 @@ def test_autotokenizer_unk_token():
     if not weights_dir.exists():
         pytest.skip("weights not available")
     tokenizer = AutoTokenizer.from_pretrained(weights_dir)
-    assert tokenizer.unk_token == "N"
+    assert tokenizer.unk_token == UNK_TOKEN

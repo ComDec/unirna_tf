@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from Bio import SeqIO
 
 from unirna_tf.infer import prepare_seq, prepare_seq_dict

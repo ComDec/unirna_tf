@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from unirna_tf.model import AvgPooler, UniRNAForMaskedLM, UniRNAForSSPredict, UniRNAModel
@@ -45,17 +46,8 @@ def test_masked_lm_loss_and_logits(tiny_config):
 
 def test_sspredict_outputs_and_mask(tiny_config):
     torch.manual_seed(0)
-    model = UniRNAForSSPredict(tiny_config)
-    input_ids = torch.tensor([[3, 5, 7, 8, 9, 1]], dtype=torch.long)
-    attention_mask = torch.tensor([[1, 1, 1, 0, 1, 1]], dtype=torch.long)
-
-    outputs = model(input_ids=input_ids, attention_mask=attention_mask, return_dict=True)
-    assert outputs.logits.shape == (1, 4, 4, 1)
-    assert outputs.pair_mask is not None
-    assert outputs.pair_mask.shape == outputs.logits.shape
-
-    masked_logits = outputs.logits[~outputs.pair_mask]
-    assert torch.allclose(masked_logits, torch.zeros_like(masked_logits))
+    with pytest.raises(RuntimeError):
+        UniRNAForSSPredict(tiny_config)
 
 
 def test_avg_pooler_excludes_special_tokens():

@@ -5,17 +5,13 @@
 
 from dataclasses import dataclass
 from functools import partial
-from typing import List, Optional, Sequence, Tuple, Union
+from typing import Optional, Sequence, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
 from packaging import version
 from torch import nn
 from torch.nn import CrossEntropyLoss
-from transformers.modeling_attn_mask_utils import (
-    _prepare_4d_attention_mask_for_sdpa,
-    _prepare_4d_causal_attention_mask_for_sdpa,
-)
 from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     BaseModelOutputWithPoolingAndCrossAttentions,
@@ -411,7 +407,7 @@ class UniRNAEncoder(nn.Module):
         all_hidden_states = () if output_hidden_states else None
         all_self_attentions = () if output_attentions else None
 
-        for i, layer_module in enumerate(self.layer):
+        for layer_module in self.layer:
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
@@ -528,8 +524,10 @@ class UniRNAModel(PreTrainedModel):
 
             - 1 for tokens that are **not masked**,
             - 0 for tokens that are **masked**.
-        past_key_values (`tuple(tuple(torch.FloatTensor))` of length `config.n_layers` with each tuple having 4 tensors of shape `(batch_size, num_heads, sequence_length - 1, embed_size_per_head)`):
-            Contains precomputed key and value hidden states of the attention blocks. Can be used to speed up decoding.
+        past_key_values (`Tuple[Tuple[torch.FloatTensor]]`, *optional*):
+            Tuple of length `config.n_layers`. Each tuple has 4 tensors of shape
+            `(batch_size, num_heads, sequence_length - 1, embed_size_per_head)`. Contains precomputed key and value
+            hidden states of the attention blocks. Can be used to speed up decoding.
 
             If `past_key_values` are used, the user can optionally input only the last `decoder_input_ids` (those that
             don't have their past key value states given to this model) of shape `(batch_size, 1)` instead of all
@@ -544,49 +542,16 @@ class UniRNAModel(PreTrainedModel):
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
-        elif input_ids is not None:
-            self.warn_if_padding_and_no_attention_mask(input_ids, attention_mask)
-            input_shape = input_ids.size()
-        elif inputs_embeds is not None:
-            input_shape = inputs_embeds.size()[:-1]
-        else:
-            raise ValueError("You have to specify either input_ids or inputs_embeds")
-
-        batch_size, seq_length = input_shape
-        device = input_ids.device if input_ids is not None else inputs_embeds.device
-
-        if attention_mask is None:
-            attention_mask = torch.ones(((batch_size, seq_length)), device=device)
-
-        # ourselves in which case we just need to make it broadcastable to all heads.
-        if self.apply_flash_attention:
-            # using flash attention does not require the attention mask to be 4D
-            extended_attention_mask: torch.Tensor = attention_mask.bool()
-        else:
-            extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape)
-
-        # If a 2D or 3D attention mask is provided for the cross-attention
-        # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
-
-        embedding_output = self.embeddings(
-            input_ids=input_ids, attention_mask=attention_mask, inputs_embeds=inputs_embeds
-        )
-
+        input_shape, attention_mask = self._validate_and_shape_inputs(input_ids, inputs_embeds, attention_mask)
+        extended_attention_mask = self._prepare_attention_mask(attention_mask, input_shape)
+        embedding_output = self._compute_embedding_output(input_ids, attention_mask, inputs_embeds)
         encoder_outputs = self.encoder(
             embedding_output,
             attention_mask=extended_attention_mask,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
         )
-        sequence_output = encoder_outputs[0]
-
-        # make it compatible with deepprotein which wraps the model with different pooler
-        try:
-            pooled_output = self.pooler(sequence_output, attention_mask) if self.pooler is not None else None
-        except TypeError:
-            pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
+        sequence_output, pooled_output = self._pool_outputs(encoder_outputs[0], attention_mask)
 
         if not return_dict:
             output = (sequence_output, pooled_output) + encoder_outputs[1:]
@@ -600,6 +565,53 @@ class UniRNAModel(PreTrainedModel):
             attentions=encoder_outputs.attentions,
             cross_attentions=encoder_outputs.cross_attentions,
         )
+
+    def _validate_and_shape_inputs(
+        self,
+        input_ids: Optional[torch.Tensor],
+        inputs_embeds: Optional[torch.Tensor],
+        attention_mask: Optional[torch.Tensor],
+    ) -> Tuple[Tuple[int, ...], torch.Tensor]:
+        if input_ids is not None and inputs_embeds is not None:
+            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+        if input_ids is None and inputs_embeds is None:
+            raise ValueError("You have to specify either input_ids or inputs_embeds")
+
+        if input_ids is not None:
+            self.warn_if_padding_and_no_attention_mask(input_ids, attention_mask)
+            input_shape = input_ids.size()
+            device = input_ids.device
+        else:
+            input_shape = inputs_embeds.size()[:-1]
+            device = inputs_embeds.device
+
+        batch_size, seq_length = input_shape
+        if attention_mask is None:
+            attention_mask = torch.ones((batch_size, seq_length), device=device)
+        return input_shape, attention_mask
+
+    def _prepare_attention_mask(self, attention_mask: torch.Tensor, input_shape: Tuple[int, ...]) -> torch.Tensor:
+        if self.apply_flash_attention:
+            return attention_mask.bool()
+        return self.get_extended_attention_mask(attention_mask, input_shape)
+
+    def _compute_embedding_output(
+        self,
+        input_ids: Optional[torch.Tensor],
+        attention_mask: torch.Tensor,
+        inputs_embeds: Optional[torch.Tensor],
+    ) -> torch.Tensor:
+        return self.embeddings(input_ids=input_ids, attention_mask=attention_mask, inputs_embeds=inputs_embeds)
+
+    def _pool_outputs(
+        self, sequence_output: torch.Tensor, attention_mask: torch.Tensor
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        # make it compatible with deepprotein which wraps the model with different pooler
+        try:
+            pooled_output = self.pooler(sequence_output, attention_mask) if self.pooler is not None else None
+        except TypeError:
+            pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
+        return sequence_output, pooled_output
 
 
 class UniRNAForMaskedLM(PreTrainedModel):
@@ -732,20 +744,10 @@ class UniRNAForSSPredict(PreTrainedModel):
     main_input_name = "input_ids"
 
     def __init__(self, config):
-        super().__init__(config)
-
-        self.embeddings = UniRNAEmbedding(config)
-        self.encoder = UniRNAEncoder(config)
-        self.heads = UniRNASSHead(config)
-
-        use_flash_attention = bool(unirna_flash_attention) and getattr(config, "use_flash_attention", False)
-        self.apply_flash_attention = use_flash_attention
-        if use_flash_attention:
-            logger.info("Using Uni-RNA FlashAttention")
-        else:
-            logger.info("Using Uni-RNA Attention")
-
-        self.post_init()
+        # Explicitly block usage until this head is trained and validated.
+        raise RuntimeError(
+            "UniRNAForSSPredict is disabled and not supported. This head is untrained and must not be called."
+        )
 
     def _set_gradient_checkpointing(self, enable: bool, gradient_checkpointing_func=None):
         self.encoder.gradient_checkpointing = enable

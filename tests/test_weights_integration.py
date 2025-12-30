@@ -30,7 +30,5 @@ def test_weights_load_and_forward():
         mlm_out = mlm(**inputs)
     assert mlm_out.logits.shape[-1] == mlm.config.vocab_size
 
-    ss_model = unirna_tf.UniRNAForSSPredict.from_pretrained(weights_dir)
-    with torch.inference_mode():
-        ss_out = ss_model(**inputs, return_dict=True)
-    assert ss_out.logits.shape[1] == inputs["input_ids"].shape[1] - 2
+    with pytest.raises(RuntimeError):
+        unirna_tf.UniRNAForSSPredict.from_pretrained(weights_dir)

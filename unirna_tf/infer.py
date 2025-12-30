@@ -1,7 +1,7 @@
 import argparse
 import os
-from functools import partial
-from typing import Dict
+import tempfile
+from typing import Dict, Optional
 
 import ray
 import torch
@@ -12,7 +12,6 @@ from ray.util.actor_pool import ActorPool
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
-import unirna_tf
 from unirna_tf import UniRNAModels
 
 
@@ -30,40 +29,7 @@ def prepare_seq_dict(fasta_path):
     return seq_list
 
 
-def parser_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--batch_size",
-        "-bsz",
-        type=int,
-        required=True,
-        help="Batch size.",
-    )
-
-    parser.add_argument(
-        "--max_seq_len",
-        "-msl",
-        type=int,
-        default=1024,
-        help="Maximum sequence length.",
-    )
-
-    parser.add_argument(
-        "--concurrency",
-        "-con",
-        type=int,
-        required=True,
-        help="Number of concurrency to use for inference.",
-    )
-
-    parser.add_argument(
-        "--fasta_path",
-        "-fp",
-        type=str,
-        required=True,
-        help="Path to the fasta file containing the sequences.",
-    )
-
+def add_model_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--pretrained_path",
         "-pp",
@@ -71,7 +37,36 @@ def parser_args():
         required=True,
         help="Path to the pretrained model weights.",
     )
+    parser.add_argument(
+        "--batch_size",
+        "-bsz",
+        type=int,
+        required=True,
+        help="Batch size.",
+    )
+    parser.add_argument(
+        "--max_seq_len",
+        "-msl",
+        type=int,
+        default=1024,
+        help="Maximum sequence length.",
+    )
+    parser.add_argument(
+        "--whole_seq",
+        "-ws",
+        action="store_true",
+        help="Whether to save the whole sequence embedding or not.",
+    )
 
+
+def add_data_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--fasta_path",
+        "-fp",
+        type=str,
+        required=True,
+        help="Path to the fasta file containing the sequences.",
+    )
     parser.add_argument(
         "--output_dir",
         "-od",
@@ -80,22 +75,39 @@ def parser_args():
         help="Directory to save the inference results.",
     )
 
+
+def add_runtime_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--concurrency",
+        "-con",
+        type=int,
+        required=True,
+        help="Number of concurrency to use for inference.",
+    )
     parser.add_argument(
         "--temp_dir",
         "-td",
         type=str,
-        default="/tmp/ray",
+        default=None,
         help="Temporary directory to store the Ray logs.",
     )
 
-    parser.add_argument(
-        "--whole_seq",
-        "-ws",
-        action="store_true",
-        help="Whether to save the whole sequence embedding or not.",
-    )
 
-    return parser.parse_args()
+def _resolve_temp_dir(temp_dir: Optional[str]) -> str:
+    if temp_dir:
+        os.makedirs(temp_dir, exist_ok=True)
+        return temp_dir
+    return tempfile.mkdtemp(prefix="ray-")
+
+
+def parser_args():
+    parser = argparse.ArgumentParser()
+    add_model_args(parser)
+    add_data_args(parser)
+    add_runtime_args(parser)
+    args = parser.parse_args()
+    args.temp_dir = _resolve_temp_dir(args.temp_dir)
+    return args
 
 
 @ray.remote
