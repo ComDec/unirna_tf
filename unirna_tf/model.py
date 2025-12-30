@@ -3,6 +3,7 @@
     Sources: https://github.com/huggingface/transformers/blob/main/src/transformers/models/esm/modeling_esm.py
 """
 
+from dataclasses import dataclass
 from functools import partial
 from typing import List, Optional, Sequence, Tuple, Union
 
@@ -19,6 +20,7 @@ from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     BaseModelOutputWithPoolingAndCrossAttentions,
     MaskedLMOutput,
+    ModelOutput,
 )
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import get_torch_version, logging
@@ -31,6 +33,15 @@ except ImportError:
     unirna_flash_attention = None
 
 logger = logging.get_logger(__name__)
+
+
+@dataclass
+class UniRNASSPredictionOutput(ModelOutput):
+    loss: Optional[torch.FloatTensor] = None
+    logits: Optional[torch.FloatTensor] = None
+    hidden_states: Optional[Tuple[torch.FloatTensor, ...]] = None
+    attentions: Optional[Tuple[torch.FloatTensor, ...]] = None
+    pair_mask: Optional[torch.BoolTensor] = None
 
 
 def rotate_half(x):
@@ -112,6 +123,8 @@ class UniRNAEmbedding(nn.Module):
             inputs_embeds = self.word_embeddings(input_ids)
 
         embeddings = inputs_embeds
+        if attention_mask is None:
+            attention_mask = torch.ones(embeddings.shape[:2], device=embeddings.device)
 
         # By default, we use token dropout, similar to UniRNA.
         if self.layer_norm is not None:
@@ -120,15 +133,14 @@ class UniRNAEmbedding(nn.Module):
             embeddings = (embeddings * attention_mask.unsqueeze(-1)).to(embeddings.dtype)
 
         embeddings = self.dropout(embeddings)
-        if self.token_dropout:
+        if self.token_dropout and input_ids is not None:
             embeddings = embeddings.masked_fill((input_ids == self.mask_token_id).unsqueeze(-1), 0.0)
             # 0.15 is MaskedLM's default mask probability, and 0.8 is the default keep probability
             mask_ratio_train = 0.15 * 0.8
-            src_lengths = attention_mask.sum(-1)
-            mask_ratio_observed = (input_ids == self.mask_token_id).sum(-1).float() / src_lengths
-            embeddings = (embeddings * (1 - mask_ratio_train) / (1 - mask_ratio_observed)[:, None, None]).to(
-                embeddings.dtype
-            )
+            src_lengths = attention_mask.sum(-1).clamp(min=1).to(embeddings.dtype)
+            mask_ratio_observed = (input_ids == self.mask_token_id).sum(-1).to(embeddings.dtype) / src_lengths
+            denom = (1 - mask_ratio_observed).clamp(min=1e-6)
+            embeddings = (embeddings * (1 - mask_ratio_train) / denom[:, None, None]).to(embeddings.dtype)
 
         return embeddings
 
@@ -239,6 +251,10 @@ class UniRNAFlashSelfAttention(UniRNASelfAttention):
             key_layer = key_layer.contiguous()
             value_layer = value_layer.contiguous()
 
+        key_padding_mask = attention_mask
+        if key_padding_mask is not None and key_padding_mask.dtype is not torch.bool:
+            key_padding_mask = key_padding_mask.bool()
+
         attn_output = unirna_flash_attention(
             query_layer,
             key_layer,
@@ -248,7 +264,7 @@ class UniRNAFlashSelfAttention(UniRNASelfAttention):
             tgt_len,
             self.attention_head_size,
             self.dropout_prob,
-            key_padding_mask=(attention_mask if attention_mask is not None else None),
+            key_padding_mask=key_padding_mask,
         ).view(bsz, tgt_len, embed_dim)
         # attn_output = attn_output.transpose(1, 2)
         # attn_output = attn_output.reshape(bsz, tgt_len, self.all_head_size)
@@ -287,7 +303,7 @@ class UniRNA_Attention(nn.Module):
         self.pruned_heads = set()
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
-    #TODO: add pruning heads
+    # TODO: add pruning heads
     # def prune_heads(self, heads):
     #     if len(heads) == 0:
     #         return
@@ -446,6 +462,9 @@ class UniRNAPooler(nn.Module):
 
 
 class UniRNAModel(PreTrainedModel):
+    config_class = UniRNAConfig
+    supports_gradient_checkpointing = True
+    main_input_name = "input_ids"
     """
 
     The model can behave as an encoder (with only self-attention) as well as a decoder, in which case a layer of
@@ -461,15 +480,20 @@ class UniRNAModel(PreTrainedModel):
         self.encoder = UniRNAEncoder(config)
         self.pooler = UniRNAPooler(config) if add_pooling_layer else None
 
-        if unirna_flash_attention and config.use_flash_attention:
-            self.apply_flash_attention = True
-            print("Using Uni-RNA FlashAttention")
+        use_flash_attention = bool(unirna_flash_attention) and getattr(config, "use_flash_attention", False)
+        self.apply_flash_attention = use_flash_attention
+        if use_flash_attention:
+            logger.info("Using Uni-RNA FlashAttention")
         else:
-            self.apply_flash_attention = False
-            print("Using Uni-RNA Attention")
+            logger.info("Using Uni-RNA Attention")
 
         # Initialize weights and apply final processing
         self.post_init()
+
+    def _set_gradient_checkpointing(self, enable: bool, gradient_checkpointing_func=None):
+        self.encoder.gradient_checkpointing = enable
+        if gradient_checkpointing_func is not None:
+            self.encoder._gradient_checkpointing_func = gradient_checkpointing_func
 
     def get_input_embeddings(self):
         return self.embeddings.word_embeddings
@@ -492,6 +516,7 @@ class UniRNAModel(PreTrainedModel):
         inputs_embeds: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
     ) -> Union[Tuple[torch.Tensor], BaseModelOutputWithPoolingAndCrossAttentions]:
         r"""
         encoder_hidden_states  (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`, *optional*):
@@ -517,6 +542,7 @@ class UniRNAModel(PreTrainedModel):
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
@@ -537,7 +563,7 @@ class UniRNAModel(PreTrainedModel):
         # ourselves in which case we just need to make it broadcastable to all heads.
         if self.apply_flash_attention:
             # using flash attention does not require the attention mask to be 4D
-            extended_attention_mask: torch.Tensor = attention_mask
+            extended_attention_mask: torch.Tensor = attention_mask.bool()
         else:
             extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape)
 
@@ -562,6 +588,10 @@ class UniRNAModel(PreTrainedModel):
         except TypeError:
             pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
 
+        if not return_dict:
+            output = (sequence_output, pooled_output) + encoder_outputs[1:]
+            return output
+
         return BaseModelOutputWithPoolingAndCrossAttentions(
             last_hidden_state=sequence_output,
             pooler_output=pooled_output,
@@ -574,6 +604,9 @@ class UniRNAModel(PreTrainedModel):
 
 class UniRNAForMaskedLM(PreTrainedModel):
     _tied_weights_keys = ["lm_head.decoder.weight"]
+    config_class = UniRNAConfig
+    supports_gradient_checkpointing = True
+    main_input_name = "input_ids"
 
     def __init__(self, config):
         super().__init__(config)
@@ -583,22 +616,41 @@ class UniRNAForMaskedLM(PreTrainedModel):
         self.encoder = UniRNAEncoder(config)
         self.lm_head = UniRNALMHead(config)
 
-        if unirna_flash_attention and config.use_flash_attention:
-            self.apply_flash_attention = True
-            print("Using Uni-RNA FlashAttention")
+        use_flash_attention = bool(unirna_flash_attention) and getattr(config, "use_flash_attention", False)
+        self.apply_flash_attention = use_flash_attention
+        if use_flash_attention:
+            logger.info("Using Uni-RNA FlashAttention")
         else:
-            self.apply_flash_attention = False
-            print("Using Uni-RNA Attention")
+            logger.info("Using Uni-RNA Attention")
 
-        self.init_weights()
+        self.post_init()
+
+    def _set_gradient_checkpointing(self, enable: bool, gradient_checkpointing_func=None):
+        self.encoder.gradient_checkpointing = enable
+        if gradient_checkpointing_func is not None:
+            self.encoder._gradient_checkpointing_func = gradient_checkpointing_func
+
+    def get_input_embeddings(self):
+        return self.embeddings.word_embeddings
+
+    def set_input_embeddings(self, value):
+        self.embeddings.word_embeddings = value
+
+    def get_output_embeddings(self):
+        return self.lm_head.decoder
+
+    def set_output_embeddings(self, new_embeddings):
+        self.lm_head.decoder = new_embeddings
 
     def forward(
         self,
         input_ids: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         inputs_embeds: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
     ) -> Union[Tuple, MaskedLMOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -633,7 +685,7 @@ class UniRNAForMaskedLM(PreTrainedModel):
         # ourselves in which case we just need to make it broadcastable to all heads.
         if self.apply_flash_attention:
             # using flash attention does not require the attention mask to be 4D
-            extended_attention_mask: torch.Tensor = attention_mask
+            extended_attention_mask: torch.Tensor = attention_mask.bool()
         else:
             extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape)
 
@@ -648,13 +700,22 @@ class UniRNAForMaskedLM(PreTrainedModel):
             attention_mask=extended_attention_mask,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
         )
         sequence_output = encoder_outputs[0]
 
         prediction_scores = self.lm_head(sequence_output)
 
+        loss = None
+        if labels is not None:
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
+
+        if not return_dict:
+            output = (prediction_scores,) + encoder_outputs[1:]
+            return ((loss,) + output) if loss is not None else output
+
         return MaskedLMOutput(
+            loss=loss,
             logits=prediction_scores,
             hidden_states=encoder_outputs.hidden_states,
             attentions=encoder_outputs.attentions,
@@ -666,21 +727,47 @@ class UniRNAForSSPredict(PreTrainedModel):
     TODO: make it compatible with transformers, create new 'modeling_outputs' class for SS prediction
     """
 
+    config_class = UniRNAConfig
+    supports_gradient_checkpointing = True
+    main_input_name = "input_ids"
+
     def __init__(self, config):
         super().__init__(config)
 
-        self.UniRNA = UniRNAModel(config, add_pooling_layer=False)
+        self.embeddings = UniRNAEmbedding(config)
+        self.encoder = UniRNAEncoder(config)
         self.heads = UniRNASSHead(config)
 
-        self.init_weights()
+        use_flash_attention = bool(unirna_flash_attention) and getattr(config, "use_flash_attention", False)
+        self.apply_flash_attention = use_flash_attention
+        if use_flash_attention:
+            logger.info("Using Uni-RNA FlashAttention")
+        else:
+            logger.info("Using Uni-RNA Attention")
+
+        self.post_init()
+
+    def _set_gradient_checkpointing(self, enable: bool, gradient_checkpointing_func=None):
+        self.encoder.gradient_checkpointing = enable
+        if gradient_checkpointing_func is not None:
+            self.encoder._gradient_checkpointing_func = gradient_checkpointing_func
+
+    def get_input_embeddings(self):
+        return self.embeddings.word_embeddings
+
+    def set_input_embeddings(self, value):
+        self.embeddings.word_embeddings = value
 
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        output_attentions: Optional[bool] = False,
-        output_hidden_states: Optional[bool] = True,
-    ) -> Union[Tuple, MaskedLMOutput]:
+        inputs_embeds: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[Tuple, UniRNASSPredictionOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for computing the masked language modeling loss. Indices should be in `[-100, 0, ...,
@@ -690,17 +777,73 @@ class UniRNAForSSPredict(PreTrainedModel):
             Used to hide legacy arguments that have been deprecated.
         """
 
-        outputs = self.UniRNA(
-            input_ids,
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        if input_ids is not None and inputs_embeds is not None:
+            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+        elif input_ids is not None:
+            self.warn_if_padding_and_no_attention_mask(input_ids, attention_mask)
+            input_shape = input_ids.size()
+        elif inputs_embeds is not None:
+            input_shape = inputs_embeds.size()[:-1]
+        else:
+            raise ValueError("You have to specify either input_ids or inputs_embeds")
+
+        batch_size, seq_length = input_shape
+        device = input_ids.device if input_ids is not None else inputs_embeds.device
+
+        if attention_mask is None:
+            attention_mask = torch.ones(((batch_size, seq_length)), device=device)
+
+        if self.apply_flash_attention:
+            extended_attention_mask: torch.Tensor = attention_mask.bool()
+        else:
+            extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape)
+
+        embedding_output = self.embeddings(
+            input_ids=input_ids,
             attention_mask=attention_mask,
+            inputs_embeds=inputs_embeds,
+        )
+
+        encoder_outputs = self.encoder(
+            embedding_output,
+            attention_mask=extended_attention_mask,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
         )
 
-        sequence_output = outputs[0]
-        prediction_scores = self.heads(sequence_output)
+        sequence_output = encoder_outputs[0]
+        logits, pair_mask = self.heads(sequence_output, attention_mask=attention_mask, return_mask=True)
 
-        return prediction_scores
+        loss = None
+        if labels is not None:
+            if labels.dim() == 3:
+                labels = labels.unsqueeze(-1)
+            if labels.shape[1] == logits.shape[1] + 2 and labels.shape[2] == logits.shape[2] + 2:
+                labels = labels[:, 1:-1, 1:-1, :]
+            labels = labels.to(logits.dtype)
+            loss_fct = nn.BCEWithLogitsLoss()
+            if pair_mask is not None:
+                loss = loss_fct(logits[pair_mask], labels[pair_mask])
+            else:
+                loss = loss_fct(logits, labels)
+
+        if not return_dict:
+            output = (logits, encoder_outputs.hidden_states, encoder_outputs.attentions, pair_mask)
+            return ((loss,) + output) if loss is not None else output
+
+        return UniRNASSPredictionOutput(
+            loss=loss,
+            logits=logits,
+            hidden_states=encoder_outputs.hidden_states,
+            attentions=encoder_outputs.attentions,
+            pair_mask=pair_mask,
+        )
 
 
 class UniRNALMHead(nn.Module):
@@ -799,38 +942,44 @@ class UniRNASSHead(nn.Module):
         self.ffn = MLP(1, config.hidden_size, residual=False)
         self.linear = nn.Linear(config.hidden_size, 1)
 
-    def forward(self, features):
+    def forward(self, features, attention_mask: Optional[torch.Tensor] = None, return_mask: bool = False):
         x = features[:, 1:-1]  # remove CLS and EOS tokens
         q, k = self.qk_proj(x).chunk(2, dim=-1)
         contact_map = (q @ k.transpose(-2, -1)).unsqueeze(-1)
         contact_map = contact_map + self.ffn(contact_map)
-        return self.linear(contact_map)
+        logits = self.linear(contact_map)
+
+        pair_mask = None
+        if attention_mask is not None:
+            core_mask = attention_mask[:, 1:-1].bool()
+            pair_mask = core_mask.unsqueeze(-1) & core_mask.unsqueeze(-2)
+            pair_mask = pair_mask.unsqueeze(-1)
+            logits = logits.masked_fill(~pair_mask, 0.0)
+
+        return (logits, pair_mask) if return_mask else logits
 
 
-class AvgPooler:
-    def __call__(self, hidden_states, attention_mask=None):
-        # bool_mask = attention_mask.bool()
+class AvgPooler(nn.Module):
+    def __init__(self):
+        super().__init__()
 
-        # # Ensure we apply the mask and exclude the first and last tokens
-        # # Apply the mask and vectorize the operation
+    def forward(self, hidden_states, attention_mask=None):
+        if attention_mask is None:
+            attention_mask = torch.ones(hidden_states.shape[:2], device=hidden_states.device, dtype=torch.bool)
+        else:
+            attention_mask = attention_mask.bool()
 
-        # # 1. Expand the attention mask to align with hidden_states dimensions
-        # mask_expanded = bool_mask.unsqueeze(-1).expand(hidden_states.size())
+        if hidden_states.size(1) > 2:
+            core_states = hidden_states[:, 1:-1, :]
+            core_mask = attention_mask[:, 1:-1]
+        else:
+            core_states = hidden_states
+            core_mask = attention_mask
 
-        # # 2. Mask out the hidden states using the attention mask, excluding [CLS] and [SEP] tokens (1:-1)
-        # masked_hidden_states = hidden_states.masked_fill(~mask_expanded, 0)
-
-        # # 3. Exclude the first and last tokens (1:-1)
-        # trimmed_hidden_states = masked_hidden_states[:, 1:-1, :]
-
-        # # 4. Compute the sum and divide by the number of valid tokens
-        # pooled_result = trimmed_hidden_states.sum(dim=1) / (bool_mask[:, 1:-1].sum(dim=1, keepdim=True) + 1e-8)
-
-        # standard avg pooling
-        avg_poolers = []
-        for n in range(hidden_states.shape[0]):
-            avg_poolers.append(hidden_states[n, attention_mask[n].bool()][1:-1].mean(0))
-        return torch.stack(avg_poolers)
+        core_mask = core_mask.unsqueeze(-1)
+        masked_states = core_states * core_mask
+        denom = core_mask.sum(dim=1).clamp(min=1).to(hidden_states.dtype)
+        return masked_states.sum(dim=1) / denom
 
 
 class UniRNAModels(UniRNAModel):

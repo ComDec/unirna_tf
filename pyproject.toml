@@ -28,6 +28,12 @@ dependencies = [
     "transformers"
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+]
+
 [project.urls]
 homepage = "http://git.dp.tech/macromolecule/unirna_transformers"
 repository = "http://git.dp.tech/macromolecule/unirna_transformers"

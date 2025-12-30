@@ -1,5 +1,10 @@
 # README
 
+[![Python](https://img.shields.io/badge/python-3.10-blue)](#)
+[![License: CC BY-NC 4.0](https://img.shields.io/badge/license-CC%20BY--NC%204.0-lightgrey)](LICENSE)
+[![Codacy - Coverage](https://app.codacy.com/project/badge/Coverage/ad5fd8904c2e426bb0a865a9160d6c69)](https://app.codacy.com/gh/ComDec/unirna_tf/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_coverage)
+[![CodeCov - Coverage](https://codecov.io/gh/ComDec/unirna_tf/graph/badge.svg)](https://codecov.io/gh/ComDec/unirna_tf)
+
 The light version of Uni-RNA, which is designed to be more efficient and easier to use.
 
 ## Installation
@@ -13,9 +18,27 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+## Testing & Coverage
+
+Run tests and generate coverage reports:
+
+```bash
+/data1/xw3763/miniforge3/envs/unirna/bin/python -m pytest \
+  --cov=unirna_tf \
+  --cov-report=term-missing \
+  --cov-report=html \
+  --cov-report=xml
+```
+
+- Terminal summary includes missing lines (`term-missing`)
+- HTML report: `htmlcov/index.html`
+- XML report: `coverage.xml`
+
+Coverage badge is powered by Codecov (see CI workflow).
+
 ## How to use
 
-We provide jupyter notebook to demonstrate how to use the pretrained model. You can find the notebook in the `examples` directory. 
+We provide jupyter notebook to demonstrate how to use the pretrained model. You can find the notebook in the `examples` directory.
 
 For model weights, please download from [Google Drive](https://drive.google.com/file/d/1zzxQa4LHCOHR9GS4MQJ4uFNtMgJsPbuv/view?usp=drive_link) and copy to the root directory of the project, then run:
 `tar -zxvf weights.tar.gz`. You will find the model weights is stored in the `weights` directory.
