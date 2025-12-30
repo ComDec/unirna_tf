@@ -18,24 +18,6 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-## Testing & Coverage
-
-Run tests and generate coverage reports:
-
-```bash
-/data1/xw3763/miniforge3/envs/unirna/bin/python -m pytest \
-  --cov=unirna_tf \
-  --cov-report=term-missing \
-  --cov-report=html \
-  --cov-report=xml
-```
-
-- Terminal summary includes missing lines (`term-missing`)
-- HTML report: `htmlcov/index.html`
-- XML report: `coverage.xml`
-
-Coverage badge is powered by Codecov (see CI workflow).
-
 ## Model summary
 
 - Released checkpoints: L8 / L12 / L16. Default configs use 64-d attention heads, GELU feed-forward with width `3 * hidden_size`, rotary position embeddings, max position 1026, vocab size 10.
