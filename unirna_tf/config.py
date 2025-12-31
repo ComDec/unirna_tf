@@ -4,6 +4,8 @@ from transformers import PretrainedConfig
 
 
 class UniRNAConfig(PretrainedConfig):
+    """Configuration for UniRNA models."""
+
     model_type: str = "unirna"
 
     def __init__(

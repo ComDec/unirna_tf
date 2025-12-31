@@ -16,6 +16,7 @@ from unirna_tf import UniRNAModels
 
 
 def prepare_seq(fasta_path):
+    """Read sequences from a FASTA file and return a list of strings."""
     seq_list = []
     for record in tqdm(SeqIO.parse(fasta_path, "fasta"), desc="Prepare fasta file"):
         seq_list.append(str(record.seq))
@@ -23,6 +24,7 @@ def prepare_seq(fasta_path):
 
 
 def prepare_seq_dict(fasta_path):
+    """Read sequences from FASTA and return list of dicts with key 'seq'."""
     seq_list = []
     for record in tqdm(SeqIO.parse(fasta_path, "fasta"), desc="Prepare fasta file"):
         seq_list.append({"seq": str(record.seq)})
@@ -30,6 +32,7 @@ def prepare_seq_dict(fasta_path):
 
 
 def add_model_args(parser: argparse.ArgumentParser) -> None:
+    """Add model-related CLI arguments."""
     parser.add_argument(
         "--pretrained_path",
         "-pp",
@@ -60,6 +63,7 @@ def add_model_args(parser: argparse.ArgumentParser) -> None:
 
 
 def add_data_args(parser: argparse.ArgumentParser) -> None:
+    """Add data input/output CLI arguments."""
     parser.add_argument(
         "--fasta_path",
         "-fp",
@@ -77,6 +81,7 @@ def add_data_args(parser: argparse.ArgumentParser) -> None:
 
 
 def add_runtime_args(parser: argparse.ArgumentParser) -> None:
+    """Add runtime-related CLI arguments (concurrency, temp dir)."""
     parser.add_argument(
         "--concurrency",
         "-con",
@@ -94,6 +99,7 @@ def add_runtime_args(parser: argparse.ArgumentParser) -> None:
 
 
 def _resolve_temp_dir(temp_dir: Optional[str]) -> str:
+    """Create or validate a temporary directory path for Ray runtime."""
     if temp_dir:
         os.makedirs(temp_dir, exist_ok=True)
         return temp_dir
@@ -101,6 +107,7 @@ def _resolve_temp_dir(temp_dir: Optional[str]) -> str:
 
 
 def parser_args():
+    """Parse CLI arguments for embedding inference."""
     parser = argparse.ArgumentParser()
     add_model_args(parser)
     add_data_args(parser)
@@ -112,6 +119,8 @@ def parser_args():
 
 @ray.remote
 class UniRNAPredictor:
+    """Ray actor wrapper to run UniRNA inference on batches."""
+
     def __init__(
         self, model, pretrained_path: str, batch_size: int = 128, max_seq_len: int = 1024, save_whole_seq: bool = False
     ):
@@ -128,12 +137,14 @@ class UniRNAPredictor:
             self.model = self.model.to(torch.bfloat16)
 
     def encode(self, examples):
+        """Tokenize a batch of sequences."""
         tokens = self.tokenizer(
             examples["seq"], padding=True, truncation=True, return_tensors="pt", max_length=self.max_seq_len
         )
         return tokens
 
     def predict(self, fasta_path, output_dir) -> Dict[str, list]:
+        """Run inference on a FASTA file and save embeddings."""
         seq_list_dict = prepare_seq_dict(fasta_path)
         dataset = Dataset.from_list(seq_list_dict)
         dataset.set_transform(self.encode)
@@ -161,6 +172,7 @@ class UniRNAPredictor:
 
 
 def cli_main():
+    """Entry point for multi-actor embedding inference."""
     import time
 
     start = time.time()

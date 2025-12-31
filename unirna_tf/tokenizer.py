@@ -15,6 +15,7 @@ VOCAB_FILES_NAMES = {"vocab_file": "vocab.txt"}
 
 
 def load_vocab_file(vocab_file):
+    """Load vocabulary tokens from file into a list of strings."""
     with open(vocab_file, "r") as f:
         lines = f.read().splitlines()
         return [line.strip() for line in lines]
