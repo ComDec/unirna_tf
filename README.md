@@ -1,11 +1,11 @@
-# README
+# Uni-RNA: The Large-Scale Pre-Trained Model for RNA Science
 
 [![Python](https://img.shields.io/badge/python-3.10-blue)](https://www.python.org/)
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/license-CC%20BY--NC%204.0-lightgrey)](LICENSE)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/a7fd7143501741b489ea2123a6ce3a50)](https://app.codacy.com/gh/ComDec/unirna_tf/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 [![Codacy - Coverage](https://app.codacy.com/project/badge/Coverage/ad5fd8904c2e426bb0a865a9160d6c69)](https://app.codacy.com/gh/ComDec/unirna_tf/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_coverage)
 
-The light version of Uni-RNA, which is designed to be more efficient and easier to use.
+The Hugging Face compatible version of Uni-RNA, which is designed to be more efficient and easier to use.
 
 ## Installation
 
@@ -20,7 +20,7 @@ pip install -e .
 
 ## Model summary
 
-- Released checkpoints: L8 / L12 / L16. Default configs use 64-d attention heads, GELU feed-forward with width `3 * hidden_size`, rotary position embeddings, max position 1026, vocab size 10.
+- Released checkpoints: L8 / L12 / L16. Default configs use 64-d attention heads, GELU feed-forward with width `3 * hidden_size`, rotary position embeddings, vocab size 10.
 
 | Model | Layers | Hidden dim | Heads | FFN dim | Notes |
 | --- | --- | --- | --- | --- | --- |
@@ -28,8 +28,7 @@ pip install -e .
 | L12 | 12 | 768  | 12 | 2304 | Balanced |
 | L16 | 16 | 1024 | 16 | 3072 | Highest capacity |
 
-- `UniRNAForMaskedLM` (a MaskedLM-style class): outputs the MLM head logits for each position (shape `[batch, seq_len, vocab_size]`), representing token prediction probabilities; `loss` is provided when labels are supplied.
-- `UniRNAForSSPredict`: an experimental secondary-structure head that produces pairwise logits (`logits`, `pair_mask`). **This head has not been trained; it remains disabled/not supported and should not be called in production.**
+- `UniRNAForMaskedLM` (a MaskedLM-style class): outputs the MLM head logits for each position (shape `[batch, seq_len+2, vocab_size]`), representing token prediction probabilities; `loss` is provided when labels are supplied.
 
 ## How to use
 
@@ -56,17 +55,14 @@ seq = "AUCGGUGACA"
 inputs = tokenizer(seq, return_tensors="pt")
 outputs = model(**inputs)
 
-# if you want return attention weights
+# if you want return attention weights, set output_attentions=True
 outputs = model(**inputs, output_attentions=True)
-```
 
-if you just want to get the last hidden states, please use:
-```python
+# if you want return the sequence embeddings without gradient:
 with torch.no_grad():
-    outputs = model(**inputs, output_hidden_states=True)
-    last_hidden_states = outputs.last_hidden_state
+    outputs = model(**inputs)
+    sequence_embeddings = outputs.last_hidden_state
 ```
-to make sure that the model is in evaluation mode without calculating gradients.
 
 
 ### Ultra fast embedding inference
@@ -75,7 +71,7 @@ to make sure that the model is in evaluation mode without calculating gradients.
 Prepare a fasta file, same format as the `example/fasta/example_0.fasta` file. The fasta file should contain the sequences you want to embed. By running the following command, we will automatically collect all fasta files in the `example/fasta` directory and extract the embedding for each sequence.
 
 
-### Run your inference
+#### Run your inference
 ```bash
 python unirna_tf/infer.py --fasta_path example/fasta --output_dir example/output --batch_size 1 --concurrency 1 --pretrained_path weights/unirna_L16
 ```
