@@ -1,7 +1,7 @@
 import argparse
 import os
-from functools import partial
-from typing import Dict
+import tempfile
+from typing import Dict, Optional
 
 import ray
 import torch
@@ -12,7 +12,6 @@ from ray.util.actor_pool import ActorPool
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
-import unirna_tf
 from unirna_tf import UniRNAModels
 
 
@@ -30,40 +29,7 @@ def prepare_seq_dict(fasta_path):
     return seq_list
 
 
-def parser_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--batch_size",
-        "-bsz",
-        type=int,
-        required=True,
-        help="Batch size.",
-    )
-
-    parser.add_argument(
-        "--max_seq_len",
-        "-msl",
-        type=int,
-        default=1024,
-        help="Maximum sequence length.",
-    )
-
-    parser.add_argument(
-        "--concurrency",
-        "-con",
-        type=int,
-        required=True,
-        help="Number of concurrency to use for inference.",
-    )
-
-    parser.add_argument(
-        "--fasta_path",
-        "-fp",
-        type=str,
-        required=True,
-        help="Path to the fasta file containing the sequences.",
-    )
-
+def add_model_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--pretrained_path",
         "-pp",
@@ -71,7 +37,36 @@ def parser_args():
         required=True,
         help="Path to the pretrained model weights.",
     )
+    parser.add_argument(
+        "--batch_size",
+        "-bsz",
+        type=int,
+        required=True,
+        help="Batch size.",
+    )
+    parser.add_argument(
+        "--max_seq_len",
+        "-msl",
+        type=int,
+        default=1024,
+        help="Maximum sequence length.",
+    )
+    parser.add_argument(
+        "--whole_seq",
+        "-ws",
+        action="store_true",
+        help="Whether to save the whole sequence embedding or not.",
+    )
 
+
+def add_data_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--fasta_path",
+        "-fp",
+        type=str,
+        required=True,
+        help="Path to the fasta file containing the sequences.",
+    )
     parser.add_argument(
         "--output_dir",
         "-od",
@@ -80,26 +75,42 @@ def parser_args():
         help="Directory to save the inference results.",
     )
 
+
+def add_runtime_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--concurrency",
+        "-con",
+        type=int,
+        required=True,
+        help="Number of concurrency to use for inference.",
+    )
     parser.add_argument(
         "--temp_dir",
         "-td",
         type=str,
-        default="/tmp/ray",
+        default=None,
         help="Temporary directory to store the Ray logs.",
     )
 
-    parser.add_argument(
-        "--whole_seq",
-        "-ws",
-        type=bool,
-        default=False,
-        help="Whether to save the whole sequence embedding or not.",
-    )
 
-    return parser.parse_args()
+def _resolve_temp_dir(temp_dir: Optional[str]) -> str:
+    if temp_dir:
+        os.makedirs(temp_dir, exist_ok=True)
+        return temp_dir
+    return tempfile.mkdtemp(prefix="ray-")
 
 
-@ray.remote(num_gpus=1, num_cpus=8)
+def parser_args():
+    parser = argparse.ArgumentParser()
+    add_model_args(parser)
+    add_data_args(parser)
+    add_runtime_args(parser)
+    args = parser.parse_args()
+    args.temp_dir = _resolve_temp_dir(args.temp_dir)
+    return args
+
+
+@ray.remote
 class UniRNAPredictor:
     def __init__(
         self, model, pretrained_path: str, batch_size: int = 128, max_seq_len: int = 1024, save_whole_seq: bool = False
@@ -113,7 +124,8 @@ class UniRNAPredictor:
         self.model = model
         self.model = self.model.to(self.device)
         self.model = self.model.eval()
-        self.model = self.model.to(torch.bfloat16)
+        if self.device == "cuda" and getattr(torch.cuda, "is_bf16_supported", lambda: False)():
+            self.model = self.model.to(torch.bfloat16)
 
     def encode(self, examples):
         tokens = self.tokenizer(
@@ -132,7 +144,7 @@ class UniRNAPredictor:
         fasta_name = fasta_basename.split(".")[0]
 
         for tokens in tqdm(dataloader, desc=f"Predicting {fasta_name}"):
-            with torch.no_grad():
+            with torch.inference_mode():
                 predictions = self.model(
                     tokens["input_ids"].to(self.device),
                     tokens["attention_mask"].to(self.device),
@@ -164,8 +176,11 @@ def cli_main():
     ray.init(_temp_dir=args.temp_dir)
     model = UniRNAModels.from_pretrained(args.pretrained_path)
     model_ref = ray.put(model)
+    num_gpus = 1 if torch.cuda.is_available() else 0
     actors = [
-        UniRNAPredictor.remote(model_ref, args.pretrained_path, args.batch_size, args.max_seq_len, args.whole_seq)
+        UniRNAPredictor.options(num_gpus=num_gpus, num_cpus=8).remote(
+            model_ref, args.pretrained_path, args.batch_size, args.max_seq_len, args.whole_seq
+        )
         for _ in range(num_actors)
     ]
     pool = ActorPool(actors)

@@ -1,4 +1,4 @@
-from transformers import AutoConfig, AutoModel, AutoTokenizer
+from transformers import AutoConfig, AutoModel, AutoModelForMaskedLM, AutoTokenizer
 
 from .config import UniRNAConfig, build_config
 from .model import UniRNAForMaskedLM, UniRNAForSSPredict, UniRNAModels
@@ -16,4 +16,5 @@ __all__ = [
 
 AutoConfig.register("unirna", UniRNAConfig)
 AutoModel.register(UniRNAConfig, UniRNAModels)
+AutoModelForMaskedLM.register(UniRNAConfig, UniRNAForMaskedLM)
 AutoTokenizer.register("unirna", UniRNATokenizer)

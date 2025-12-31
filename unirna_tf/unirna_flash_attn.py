@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 from einops import rearrange
 from flash_attn.bert_padding import unpad_input
@@ -14,7 +16,7 @@ def unirna_flash_attention(
     seqlen: int,
     head_dim: int,
     attn_dropout: float,
-    key_padding_mask: bool = None,
+    key_padding_mask: Optional[Tensor] = None,
 ) -> Tensor:
     q = q.reshape(bsz, num_heads, seqlen, head_dim).transpose(1, 2).reshape(bsz, seqlen, num_heads * head_dim)
     k = k.reshape(bsz, num_heads, seqlen, head_dim).transpose(1, 2).reshape(bsz, seqlen, num_heads * head_dim)
@@ -25,7 +27,9 @@ def unirna_flash_attention(
     max_seqlen_q = seqlen
 
     if key_padding_mask is not None:
-        k_unpad, indices_k, cu_seqlens_k, max_seqlen_k, seq_used = unpad_input(k, key_padding_mask)
+        if key_padding_mask.dtype is not torch.bool:
+            key_padding_mask = key_padding_mask.bool()
+        k_unpad, _, cu_seqlens_k, max_seqlen_k, seq_used = unpad_input(k, key_padding_mask)
         k_unpad = rearrange(k_unpad, "nnz (h d) -> nnz h d", h=num_heads)
         v_unpad, _, _, _, seq_used = unpad_input(v, key_padding_mask)
         v_unpad = rearrange(v_unpad, "nnz (h d) -> nnz h d", h=num_heads)
