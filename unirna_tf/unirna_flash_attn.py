@@ -18,6 +18,7 @@ def unirna_flash_attention(
     attn_dropout: float,
     key_padding_mask: Optional[Tensor] = None,
 ) -> Tensor:
+    """Compute FlashAttention with optional padding mask for UniRNA tensors."""
     q = q.reshape(bsz, num_heads, seqlen, head_dim).transpose(1, 2).reshape(bsz, seqlen, num_heads * head_dim)
     k = k.reshape(bsz, num_heads, seqlen, head_dim).transpose(1, 2).reshape(bsz, seqlen, num_heads * head_dim)
     v = v.reshape(bsz, num_heads, seqlen, head_dim).transpose(1, 2).reshape(bsz, seqlen, num_heads * head_dim)
