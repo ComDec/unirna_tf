@@ -1,7 +1,8 @@
 import argparse
 import os
 import tempfile
-from typing import Dict, Optional
+from pathlib import Path
+from typing import Dict, List, Optional
 
 import ray
 import torch
@@ -13,6 +14,10 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 
 from unirna_tf import UniRNAModels
+
+
+FASTA_SUFFIXES = {".fa", ".fasta", ".fna", ".ffn", ".faa", ".frn"}
+COMPRESSION_SUFFIXES = {".gz", ".bz2", ".xz"}
 
 
 def prepare_seq(fasta_path):
@@ -29,6 +34,76 @@ def prepare_seq_dict(fasta_path):
     for record in tqdm(SeqIO.parse(fasta_path, "fasta"), desc="Prepare fasta file"):
         seq_list.append({"seq": str(record.seq)})
     return seq_list
+
+
+def is_fasta_file(path: Path) -> bool:
+    """Return whether the path looks like a FASTA file."""
+    suffixes = [suffix.lower() for suffix in path.suffixes]
+    if not suffixes:
+        return False
+    if suffixes[-1] in FASTA_SUFFIXES:
+        return True
+    return len(suffixes) >= 2 and suffixes[-1] in COMPRESSION_SUFFIXES and suffixes[-2] in FASTA_SUFFIXES
+
+
+def fasta_output_stem(fasta_path: str) -> str:
+    """Build a stable output stem without dropping earlier dots."""
+    path = Path(fasta_path)
+    name = path.name
+    while True:
+        stem, suffix = os.path.splitext(name)
+        if not suffix:
+            break
+        suffix = suffix.lower()
+        if suffix in COMPRESSION_SUFFIXES or suffix in FASTA_SUFFIXES:
+            name = stem
+            continue
+        break
+    return name
+
+
+def resolve_fasta_inputs(fasta_path: str) -> List[str]:
+    """Resolve a FASTA file or a directory of FASTA files."""
+    input_path = Path(fasta_path)
+    if not input_path.exists():
+        raise FileNotFoundError(f"FASTA input path does not exist: {fasta_path}")
+
+    if input_path.is_file():
+        if not is_fasta_file(input_path):
+            raise ValueError(f"Input file is not a supported FASTA file: {fasta_path}")
+        return [str(input_path)]
+
+    if not input_path.is_dir():
+        raise ValueError(f"FASTA input path must be a file or directory: {fasta_path}")
+
+    file_paths = sorted(str(path) for path in input_path.iterdir() if path.is_file() and is_fasta_file(path))
+    if not file_paths:
+        raise ValueError(f"No FASTA files found in directory: {fasta_path}")
+
+    stems = {}
+    for file_path in file_paths:
+        stem = fasta_output_stem(file_path)
+        if stem in stems:
+            raise ValueError(
+                f"Multiple FASTA inputs would overwrite the same output '{stem}.pt': {stems[stem]} and {file_path}"
+            )
+        stems[stem] = file_path
+    return file_paths
+
+
+def format_prediction_batch(predictions, attention_mask: torch.Tensor, save_whole_seq: bool):
+    """Convert model outputs into a serializable batch payload."""
+    pooler_output = predictions.pooler_output.float().cpu()
+    if not save_whole_seq:
+        return pooler_output
+
+    attention_mask = attention_mask.to(dtype=torch.int64).cpu()
+    return {
+        "pooler_output": pooler_output,
+        "last_hidden_state": predictions.last_hidden_state.float().cpu(),
+        "attention_mask": attention_mask,
+        "sequence_lengths": attention_mask.sum(dim=1),
+    }
 
 
 def add_model_args(parser: argparse.ArgumentParser) -> None:
@@ -69,7 +144,7 @@ def add_data_args(parser: argparse.ArgumentParser) -> None:
         "-fp",
         type=str,
         required=True,
-        help="Path to the fasta file containing the sequences.",
+        help="Path to a FASTA file or a directory containing FASTA files.",
     )
     parser.add_argument(
         "--output_dir",
@@ -151,20 +226,17 @@ class UniRNAPredictor:
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, shuffle=False, num_workers=8)
         results = []
         print(f"Predicting {fasta_path}")
-        fasta_basename = os.path.basename(fasta_path)
-        fasta_name = fasta_basename.split(".")[0]
+        fasta_name = fasta_output_stem(fasta_path)
 
         for tokens in tqdm(dataloader, desc=f"Predicting {fasta_name}"):
+            attention_mask = tokens["attention_mask"]
             with torch.inference_mode():
                 predictions = self.model(
                     tokens["input_ids"].to(self.device),
-                    tokens["attention_mask"].to(self.device),
+                    attention_mask.to(self.device),
                     output_attentions=False,
                 )
-            if self.save_whole_seq:
-                results.append((predictions.pooler_output.float().cpu(), predictions.last_hidden_state.float().cpu()))
-            else:
-                results.append(predictions.pooler_output.float().cpu())
+            results.append(format_prediction_batch(predictions, attention_mask, self.save_whole_seq))
 
         torch.save(results, f"{output_dir}/{fasta_name}.pt")
 
@@ -177,9 +249,7 @@ def cli_main():
 
     start = time.time()
     args = parser_args()
-    file_paths = []
-    for file_name in os.listdir(args.fasta_path):
-        file_paths.append(os.path.join(args.fasta_path, file_name))
+    file_paths = resolve_fasta_inputs(args.fasta_path)
 
     num_actors = args.concurrency
 
