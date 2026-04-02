@@ -68,7 +68,7 @@ with torch.no_grad():
 ### Ultra fast embedding inference
 
 #### Preare the data
-Prepare a fasta file, same format as the `example/fasta/example_0.fasta` file. The fasta file should contain the sequences you want to embed. By running the following command, we will automatically collect all fasta files in the `example/fasta` directory and extract the embedding for each sequence.
+Prepare a FASTA file, same format as the `example/fasta/example_0.fasta` file. You can pass either a single FASTA file or a directory containing FASTA files. When you pass a directory, the command collects supported FASTA files in that directory and extracts embeddings for each sequence.
 
 
 #### Run your inference
