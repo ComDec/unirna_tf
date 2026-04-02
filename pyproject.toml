@@ -25,6 +25,13 @@ classifiers = [
 requires-python = ">=3"
 dynamic = ["version"]
 dependencies = [
+    "biopython",
+    "chanfig",
+    "datasets",
+    "packaging",
+    "ray",
+    "torch",
+    "tqdm",
     "transformers"
 ]
 
@@ -40,6 +47,7 @@ repository = "http://git.dp.tech/macromolecule/unirna_transformers"
 documentation = "http://git.dp.tech/macromolecule/unirna_transformers"
 
 [project.scripts]
+unirna_build_model = "unirna_tf.build_model:cli_main"
 unirna_infer = "unirna_tf.infer:cli_main"
 
 [tool.setuptools]
