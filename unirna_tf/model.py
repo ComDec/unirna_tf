@@ -3,9 +3,10 @@
     Sources: https://github.com/huggingface/transformers/blob/main/src/transformers/models/esm/modeling_esm.py
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import partial
-from typing import Optional, Sequence, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
@@ -230,6 +231,10 @@ class UniRNAFlashSelfAttention(UniRNASelfAttention):
         attention_mask: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = False,
     ) -> Tuple[torch.Tensor]:
+        if output_attentions:
+            raise ValueError("Flash Attention does not support output_attentions=True")
+        if unirna_flash_attention is None:
+            raise RuntimeError("Flash Attention is unavailable because the flash_attn package is not installed")
 
         bsz, tgt_len, embed_dim = hidden_states.size()
         query_layer = self.transpose_for_scores(self.query(hidden_states))
@@ -262,13 +267,7 @@ class UniRNAFlashSelfAttention(UniRNASelfAttention):
             self.dropout_prob,
             key_padding_mask=key_padding_mask,
         ).view(bsz, tgt_len, embed_dim)
-        # attn_output = attn_output.transpose(1, 2)
-        # attn_output = attn_output.reshape(bsz, tgt_len, self.all_head_size)
-        attentions = None
-        if output_attentions:
-            attentions = None
-            raise ValueError("Flash Attention don't support output attention")
-        outputs = (attn_output, attentions)
+        outputs = (attn_output, None)
 
         return outputs
 
@@ -299,27 +298,13 @@ class UniRNA_Attention(nn.Module):
         self.pruned_heads = set()
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
-    # TODO: add pruning heads
-    # def prune_heads(self, heads):
-    #     if len(heads) == 0:
-    #         return
-    #     heads, index = find_pruneable_heads_and_indices(
-    #         heads,
-    #         self.self.num_attention_heads,
-    #         self.self.attention_head_size,
-    #         self.pruned_heads,
-    #     )
-
-    #     # Prune linear layers
-    #     self.self.query = prune_linear_layer(self.self.query, index)
-    #     self.self.key = prune_linear_layer(self.self.key, index)
-    #     self.self.value = prune_linear_layer(self.self.value, index)
-    #     self.output.dense = prune_linear_layer(self.output.dense, index, dim=1)
-
-    #     # Update hyper params and store pruned heads
-    #     self.self.num_attention_heads = self.self.num_attention_heads - len(heads)
-    #     self.self.all_head_size = self.self.attention_head_size * self.self.num_attention_heads
-    #     self.pruned_heads = self.pruned_heads.union(heads)
+    def prune_heads(self, heads):
+        if len(heads) == 0:
+            return
+        raise NotImplementedError(
+            "UniRNA attention head pruning is not implemented; prune_heads() is exposed by the Transformers API "
+            "but this model does not support pruning attention heads."
+        )
 
     def forward(
         self,
@@ -476,11 +461,14 @@ class UniRNAModel(PreTrainedModel):
         self.encoder = UniRNAEncoder(config)
         self.pooler = UniRNAPooler(config) if add_pooling_layer else None
 
-        use_flash_attention = bool(unirna_flash_attention) and getattr(config, "use_flash_attention", False)
+        flash_attention_requested = getattr(config, "use_flash_attention", False)
+        use_flash_attention = bool(unirna_flash_attention) and flash_attention_requested
         self.apply_flash_attention = use_flash_attention
         if use_flash_attention:
             logger.info("Using Uni-RNA FlashAttention")
         else:
+            if flash_attention_requested and unirna_flash_attention is None:
+                logger.warning("Flash Attention requested but flash_attn is unavailable; falling back to standard attention")
             logger.info("Using Uni-RNA Attention")
 
         # Initialize weights and apply final processing
@@ -628,11 +616,14 @@ class UniRNAForMaskedLM(PreTrainedModel):
         self.encoder = UniRNAEncoder(config)
         self.lm_head = UniRNALMHead(config)
 
-        use_flash_attention = bool(unirna_flash_attention) and getattr(config, "use_flash_attention", False)
+        flash_attention_requested = getattr(config, "use_flash_attention", False)
+        use_flash_attention = bool(unirna_flash_attention) and flash_attention_requested
         self.apply_flash_attention = use_flash_attention
         if use_flash_attention:
             logger.info("Using Uni-RNA FlashAttention")
         else:
+            if flash_attention_requested and unirna_flash_attention is None:
+                logger.warning("Flash Attention requested but flash_attn is unavailable; falling back to standard attention")
             logger.info("Using Uni-RNA Attention")
 
         self.post_init()
@@ -910,8 +901,8 @@ class MLP(nn.Module):
         linear_output: bool = True
     ) -> None:
         super().__init__()
-        if len(features) == 0 and isinstance(features, Sequence):
-            features = features[0]  # type: ignore[assignment]
+        if len(features) == 1 and isinstance(features[0], Sequence):
+            features = tuple(features[0])
         if not len(features) > 1:
             raise ValueError(f"`features` of MLP should have at least 2 elements, but got {len(features)}")
         dense = partial(
