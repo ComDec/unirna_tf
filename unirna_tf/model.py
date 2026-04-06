@@ -9,7 +9,6 @@ from typing import Optional, Sequence, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
-from packaging import version
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import (
@@ -19,14 +18,9 @@ from transformers.modeling_outputs import (
     ModelOutput,
 )
 from transformers.modeling_utils import PreTrainedModel
-from transformers.utils import get_torch_version, logging
+from transformers.utils import logging
 
 from .config import UniRNAConfig
-
-try:
-    from .unirna_flash_attn import unirna_flash_attention
-except ImportError:
-    unirna_flash_attention = None
 
 logger = logging.get_logger(__name__)
 
@@ -218,59 +212,47 @@ class UniRNASelfAttention(nn.Module):
 
 
 class UniRNAFlashSelfAttention(UniRNASelfAttention):
+    """Self-attention using PyTorch's scaled_dot_product_attention (SDPA) backend."""
+
     def __init__(self, config):
         super().__init__(config)
         self.dropout_prob = config.attention_probs_dropout_prob
-        self.require_contiguous_qkv = version.parse(get_torch_version()) < version.parse("2.2.0")
 
-    # Adapted from BertSelfAttention
     def forward(
         self,
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = False,
     ) -> Tuple[torch.Tensor]:
+        if output_attentions:
+            raise ValueError("SDPA attention does not support output_attentions=True")
 
-        bsz, tgt_len, embed_dim = hidden_states.size()
-        query_layer = self.transpose_for_scores(self.query(hidden_states))
-        current_states = hidden_states
+        mixed_query_layer = self.query(hidden_states)
+        key_layer = self.transpose_for_scores(self.key(hidden_states))
+        value_layer = self.transpose_for_scores(self.value(hidden_states))
+        query_layer = self.transpose_for_scores(mixed_query_layer)
 
-        key_layer = self.transpose_for_scores(self.key(current_states))
-        value_layer = self.transpose_for_scores(self.value(current_states))
-
-        # Hardcoded from EsmModel provided by transformers
+        # Same manual scaling as UniRNASelfAttention
         query_layer = query_layer * self.attention_head_size**-0.5
+
         # Apply rotary embeddings
         query_layer, key_layer = self.rotary_embeddings(query_layer, key_layer)
-        if self.require_contiguous_qkv and query_layer.device.type == "cuda" and attention_mask is not None:
-            query_layer = query_layer.contiguous()
-            key_layer = key_layer.contiguous()
-            value_layer = value_layer.contiguous()
 
-        key_padding_mask = attention_mask
-        if key_padding_mask is not None and key_padding_mask.dtype is not torch.bool:
-            key_padding_mask = key_padding_mask.bool()
-
-        attn_output = unirna_flash_attention(
+        # Use PyTorch SDPA; scale=1.0 because we already scaled query above
+        attn_output = torch.nn.functional.scaled_dot_product_attention(
             query_layer,
             key_layer,
             value_layer,
-            bsz,
-            self.num_attention_heads,
-            tgt_len,
-            self.attention_head_size,
-            self.dropout_prob,
-            key_padding_mask=key_padding_mask,
-        ).view(bsz, tgt_len, embed_dim)
-        # attn_output = attn_output.transpose(1, 2)
-        # attn_output = attn_output.reshape(bsz, tgt_len, self.all_head_size)
-        attentions = None
-        if output_attentions:
-            attentions = None
-            raise ValueError("Flash Attention don't support output attention")
-        outputs = (attn_output, attentions)
+            attn_mask=attention_mask,
+            dropout_p=self.dropout_prob if self.training else 0.0,
+            scale=1.0,
+        )
 
-        return outputs
+        attn_output = attn_output.permute(0, 2, 1, 3).contiguous()
+        new_shape = attn_output.size()[:-2] + (self.all_head_size,)
+        attn_output = attn_output.view(new_shape)
+
+        return (attn_output, None)
 
 
 class UniRNASelfOutput(nn.Module):
@@ -290,8 +272,7 @@ class UniRNA_Attention(nn.Module):
     def __init__(self, config):
         super().__init__()
 
-        # TODO: rename self.self to self.self_attention
-        if unirna_flash_attention and config.use_flash_attention:
+        if getattr(config, "use_flash_attention", False):
             self.self = UniRNAFlashSelfAttention(config)
         else:
             self.self = UniRNASelfAttention(config)
@@ -476,10 +457,9 @@ class UniRNAModel(PreTrainedModel):
         self.encoder = UniRNAEncoder(config)
         self.pooler = UniRNAPooler(config) if add_pooling_layer else None
 
-        use_flash_attention = bool(unirna_flash_attention) and getattr(config, "use_flash_attention", False)
-        self.apply_flash_attention = use_flash_attention
+        use_flash_attention = getattr(config, "use_flash_attention", False)
         if use_flash_attention:
-            logger.info("Using Uni-RNA FlashAttention")
+            logger.info("Using Uni-RNA SDPA Attention")
         else:
             logger.info("Using Uni-RNA Attention")
 
@@ -591,8 +571,6 @@ class UniRNAModel(PreTrainedModel):
         return input_shape, attention_mask
 
     def _prepare_attention_mask(self, attention_mask: torch.Tensor, input_shape: Tuple[int, ...]) -> torch.Tensor:
-        if self.apply_flash_attention:
-            return attention_mask.bool()
         return self.get_extended_attention_mask(attention_mask, input_shape)
 
     def _compute_embedding_output(
@@ -627,13 +605,6 @@ class UniRNAForMaskedLM(PreTrainedModel):
         self.embeddings = UniRNAEmbedding(config)
         self.encoder = UniRNAEncoder(config)
         self.lm_head = UniRNALMHead(config)
-
-        use_flash_attention = bool(unirna_flash_attention) and getattr(config, "use_flash_attention", False)
-        self.apply_flash_attention = use_flash_attention
-        if use_flash_attention:
-            logger.info("Using Uni-RNA FlashAttention")
-        else:
-            logger.info("Using Uni-RNA Attention")
 
         self.post_init()
 
@@ -694,12 +665,7 @@ class UniRNAForMaskedLM(PreTrainedModel):
         if attention_mask is None:
             attention_mask = torch.ones(((batch_size, seq_length)), device=device)
 
-        # ourselves in which case we just need to make it broadcastable to all heads.
-        if self.apply_flash_attention:
-            # using flash attention does not require the attention mask to be 4D
-            extended_attention_mask: torch.Tensor = attention_mask.bool()
-        else:
-            extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape)
+        extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape)
 
         embedding_output = self.embeddings(
             input_ids=input_ids,
@@ -801,10 +767,7 @@ class UniRNAForSSPredict(PreTrainedModel):
         if attention_mask is None:
             attention_mask = torch.ones(((batch_size, seq_length)), device=device)
 
-        if self.apply_flash_attention:
-            extended_attention_mask: torch.Tensor = attention_mask.bool()
-        else:
-            extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape)
+        extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape)
 
         embedding_output = self.embeddings(
             input_ids=input_ids,
