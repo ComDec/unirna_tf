@@ -1,3 +1,5 @@
+
+
 # Uni-RNA: The Large-Scale Pre-Trained Model for RNA Science
 
 [![Python](https://img.shields.io/badge/python-3.10-blue)](https://www.python.org/)
@@ -67,7 +69,7 @@ with torch.no_grad():
 
 ### Ultra fast embedding inference
 
-#### Preare the data
+#### Prepare the data
 Prepare a fasta file, same format as the `example/fasta/example_0.fasta` file. The fasta file should contain the sequences you want to embed. By running the following command, we will automatically collect all fasta files in the `example/fasta` directory and extract the embedding for each sequence.
 
 
