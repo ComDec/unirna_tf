@@ -9,10 +9,10 @@ readme = "README.md"
 license = {file = "LICENSE"}
 keywords = ["Machine Learning", "Transformers", "UniRNA", "RNA"]
 maintainers = [
-    {name = "Xi Wang", email = "wangx@dp.tech"},
+    {name = "Ruichu Gu", email = "pkugrc@outlook.com"},
 ]
 authors = [
-    {name = "Xi Wang", email = "wangx@dp.tech"},
+    {name = "Ruichu Gu", email = "pkugrc@outlook.com"},
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
